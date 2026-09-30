@@ -41,8 +41,10 @@ function socketPath(userData, platform = process.platform, tmpdir = platform ===
     const hash = crypto.createHash("sha1").update(String(userData).toLowerCase()).digest("hex").slice(0, 12);
     if (platform === "win32") return `\\\\.\\pipe\\scumble-${hash}`;
     // macOS allows 104 bytes for a socket path, and a user data folder (a gate profile under a synced checkout) can
-    // be longer than that; the hash keeps two profiles apart as the pipe name does on Windows
-    if (platform === "darwin") return path.join(tmpdir, `scumble-${hash}.sock`);
+    // be longer than that; the hash keeps two profiles apart as the pipe name does on Windows.
+    // socketPath is pure: tools/platform_test.js queries every platform's answer on any host, so we use path.posix.join
+    // here to ensure forward slashes even when asked for darwin while running on Windows.
+    if (platform === "darwin") return path.posix.join(tmpdir, `scumble-${hash}.sock`);
     return path.join(userData, "scumble.sock");
 }
 
