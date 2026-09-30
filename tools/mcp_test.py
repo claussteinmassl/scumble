@@ -29,6 +29,8 @@ import subprocess
 import sys
 import time
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from electron_path import app_executable, dev_electron, packaged_asar  # noqa: E402
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
@@ -57,11 +59,12 @@ if "--user-data-dir" in args:
 OUT = os.path.abspath(args[0] if args else os.path.join(ROOT, "dist", "smoke"))
 os.makedirs(OUT, exist_ok=True)
 
-DEV_EXE = os.path.join(ROOT, "node_modules", "electron", "dist", "electron.exe" if os.name == "nt" else "electron")
-EXE = os.path.abspath(EXE) if EXE else DEV_EXE
+DEV_EXE = dev_electron()
+EXE = app_executable(os.path.abspath(EXE)) if EXE else DEV_EXE
 IS_ELECTRON = "electron" in os.path.basename(EXE).lower()
 # The launcher lives beside the sources in a dev checkout and inside the asar in a package.
-LAUNCHER = os.path.join(ROOT, "electron", "main", "mcp", "launch.js") if IS_ELECTRON else     os.path.join(os.path.dirname(EXE), "resources", "app.asar", "electron", "main", "mcp", "launch.js")
+LAUNCHER = os.path.join(ROOT, "electron", "main", "mcp", "launch.js") if IS_ELECTRON else \
+    os.path.join(packaged_asar(EXE), "electron", "main", "mcp", "launch.js")
 if STORE:
     # what the registration names: the alias and the -e code, read from registration.js itself
     _store = json.loads(subprocess.run(["node", "-e", "const r=require('./electron/main/mcp/registration');process.stdout.write(JSON.stringify(r.server({platform:'win32',storeAlias:require('./electron/main/msix').aliasPath(process.env.LOCALAPPDATA)})))"], cwd=ROOT, capture_output=True, text=True, check=True).stdout)

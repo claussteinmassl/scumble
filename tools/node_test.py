@@ -34,7 +34,10 @@ import threading
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 DEFAULT_NODE = r"F:\Comfyui\ComfyUI_windows_portable_nvidia\ComfyUI\custom_nodes\ComfyUI-InpaintCanvas"
-ELECTRON = os.path.join(ROOT, "node_modules", "electron", "dist", "electron.exe" if os.name == "nt" else "electron")
+sys.path.insert(0, HERE)
+from electron_path import dev_electron  # noqa: E402
+
+ELECTRON = dev_electron()
 
 
 def main():

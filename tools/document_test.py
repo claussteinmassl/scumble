@@ -48,11 +48,9 @@ the slow save of steps 5 to 8 (a noise PNG, stored three times in the document).
 """
 import argparse
 import asyncio
-import ctypes
 import glob
 import hashlib
 import json
-import msvcrt
 import os
 import random
 import shutil
@@ -63,7 +61,6 @@ import threading
 import time
 import zipfile
 import zlib
-from ctypes import wintypes
 
 import aiohttp
 
@@ -73,8 +70,9 @@ sys.path.insert(0, HERE)
 from cdp import HOOK, Cdp  # noqa: E402
 from glb_test import cube_glb  # noqa: E402
 from quit_test import close_window  # noqa: E402
+from electron_path import dev_electron  # noqa: E402
 
-ELECTRON = os.path.join(ROOT, "node_modules", "electron", "dist", "electron.exe")
+ELECTRON = dev_electron()
 MIME = b"application/x-scumble"
 
 PRE = """(async () => {
@@ -525,14 +523,22 @@ def sha_bytes(b):
     return hashlib.sha256(b).hexdigest()
 
 
-_k32 = ctypes.WinDLL("kernel32", use_last_error=True)
-_k32.CreateFileW.restype = wintypes.HANDLE
-_k32.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
-INVALID = ctypes.c_void_p(-1).value
+if os.name == "nt":
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
+
+    _k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    _k32.CreateFileW.restype = wintypes.HANDLE
+    _k32.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+    INVALID = ctypes.c_void_p(-1).value
 
 
 def open_shared(path):
-    """Open for reading with FILE_SHARE_DELETE, as a viewer or a scanner does: the save's rename is not blocked by it."""
+    """Open for reading with FILE_SHARE_DELETE, as a viewer or a scanner does: the save's rename is not blocked by it.
+    (Elsewhere a plain open is the same: an open file never blocks a rename.)"""
+    if os.name != "nt":
+        return open(path, "rb")
     h = _k32.CreateFileW(path, 0x80000000, 0x1 | 0x2 | 0x4, None, 3, 0x80, None)
     if h is None or h == INVALID:
         raise OSError(ctypes.get_last_error(), "CreateFileW failed", path)
@@ -768,12 +774,16 @@ class App:
             self.session = None
 
     async def close(self, timeout=180):
-        """WM_CLOSE, as the close button sends it, and the wait for the process to end."""
+        """WM_CLOSE, as the close button sends it, and the wait for the process to end. (Not on Windows: there is no
+        close event to send, so this only ends the instance with SIGTERM; the steps that test the close are skipped.)"""
         t0 = time.time()
-        try:
-            close_window(self.proc.pid)
-        except RuntimeError:
-            pass
+        if os.name != "nt":
+            self.proc.terminate()
+        else:
+            try:
+                close_window(self.proc.pid)
+            except RuntimeError:
+                pass
         code = self.wait_exit(timeout)
         await self.close_io()
         if code is None:
@@ -783,7 +793,7 @@ class App:
     def kill(self):
         if self.proc and self.proc.poll() is None:
             self.proc.kill()
-        if self.proc:
+        if self.proc and os.name == "nt":
             subprocess.run(["taskkill", "/F", "/T", "/PID", str(self.proc.pid)], capture_output=True)
 
 
@@ -1096,6 +1106,9 @@ class Gate:
         return A2
 
     async def step8(self, A2, prof, big, paths, state):
+        if os.name != "nt":
+            print("SKIP a_close_waits_for_the_save: Windows only", flush=True)
+            return
         t = time.time()
         old = sha(big)
         await A2.setg(prompt="big-4 closed")

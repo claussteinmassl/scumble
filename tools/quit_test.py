@@ -38,8 +38,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, ".."))
 sys.path.insert(0, HERE)
 from cdp import HOOK, Cdp  # noqa: E402
+from electron_path import dev_electron  # noqa: E402
 
-ELECTRON = os.path.join(ROOT, "node_modules", "electron", "dist", "electron.exe")
+ELECTRON = dev_electron()
 
 PRE = """(async () => {
     const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -149,7 +150,11 @@ return { fp: fingerprint(f.L, W, H), note };
 
 def close_window(pid):
     """Post WM_CLOSE to the process's visible top-level windows: what the close button and Alt+F4 do. (A page's
-    window.close() is not the same: Electron closes the window without its close event.)"""
+    window.close() is not the same: Electron closes the window without its close event.)
+
+    Windows only: there is no WM_CLOSE elsewhere, so callers check os.name first."""
+    if os.name != "nt":
+        raise RuntimeError("close_window is Windows only")
     import ctypes
     from ctypes import wintypes
     user32 = ctypes.windll.user32
@@ -263,6 +268,12 @@ class Gate:
                 print("FAIL")
                 return False
             print("[ok] node: %d checks" % tail.count("[ok]"), flush=True)
+        if os.name != "nt":
+            # every step ends an instance with WM_CLOSE (close_window), which only Windows has; the node part above ran
+            for name in ("a_close_right_after_a_stroke_keeps_it", "a_windowed_start_keeps_the_last_session", "no_autosave_while_documents_are_restored",
+                         "a_crashed_window_comes_back_with_its_documents", "a_second_crash_starts_empty_and_keeps_the_documents", "the_last_close_ends_the_process"):
+                print(f"SKIP {name}: Windows only", flush=True)
+            return self.finish_skipped()
         a = b = None
         try:
             # 1: a stroke, and the window closed at once
@@ -363,6 +374,11 @@ class Gate:
         app.kill()
         print(f"  (closed the second instance in {time.time() - t0:.1f} s)")
         return self.finish()
+
+    def finish_skipped(self):
+        """PASS for a run whose app steps were all skipped (not Windows): only the node part ran."""
+        print("PASS" if not self.args.no_node else "SKIP: nothing ran", flush=True)
+        return True
 
     def finish(self):
         ok = bool(self.results) and all(self.results)

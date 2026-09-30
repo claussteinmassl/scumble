@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run with Git Bash; it runs the checkout it lives in (F:/canvas, or a worktree of it). Never touches port 9557 (the
+# Run with Git Bash on Windows or bash on macOS; it runs the checkout it lives in (F:/canvas, or a worktree of it). Never touches port 9557 (the
 # preview) or the real node repo.
 # Gates on a fresh dev instance with its own profile (docs/PLAN_BCE.md §0).
 #
@@ -32,8 +32,9 @@
 # Gate "document" (tools/document_test.py) runs tools/document_test.js in plain Node first, then saves and opens
 # .scumble documents in instances of its own (a fresh profile, a kill mid-save, a close during a save, newer files).
 # Logs and summary.txt go to $SCUMBLE_GATES/gates/<label>/. Exit code 0 only when every gate passed.
-# Logs, profiles and the node copy go under $SCUMBLE_GATES (default F:/canvas/dist/gates, ignored by git).
-SP="${SCUMBLE_GATES:-/f/canvas/dist/gates}"
+# Logs, profiles and the node copy go under $SCUMBLE_GATES (default F:/canvas/dist/gates, ignored by git; without
+# /f/canvas, e.g. on macOS: dist/gates of this checkout, resolved after the cd below).
+SP="$SCUMBLE_GATES"
 # SCUMBLE_CDP_PORT picks the DevTools port (default 9555), so two runs with different labels can go side by side;
 # tools/cdp.py and tools/close_app.py read the same variable.
 PORT="${SCUMBLE_CDP_PORT:-9555}"
@@ -50,15 +51,48 @@ while [ $# -gt 0 ]; do
     *) break ;;
   esac
 done
+cd "$(dirname "$0")/.." || exit 1
+[ -z "$SP" ] && { if [ -d /f/canvas ]; then SP=/f/canvas/dist/gates; else SP="$PWD/dist/gates"; fi; }
 OUT="$SP/gates/$LABEL"
 PROFILE="$SP/profiles/$LABEL"
-cd "$(dirname "$0")/.." || exit 1
 rm -rf "$OUT" "$PROFILE"
 mkdir -p "$OUT" "$PROFILE/files/input/inpaint_canvas"
-cp "/f/Comfyui/ComfyUI_windows_portable_nvidia/ComfyUI/input/inpaint_canvas/test_base.png" "$PROFILE/files/input/inpaint_canvas/"
+# The gates load input/inpaint_canvas/test_base.png (512 x 384) from the profile's ComfyUI mirror. The original lives in
+# the ComfyUI install of the Windows dev machine; elsewhere a stand-in of the same size (a colour gradient) is written.
+TEST_BASE="/f/Comfyui/ComfyUI_windows_portable_nvidia/ComfyUI/input/inpaint_canvas/test_base.png"
+if [ -f "$TEST_BASE" ]; then
+  cp "$TEST_BASE" "$PROFILE/files/input/inpaint_canvas/"
+else
+  python - "$PROFILE/files/input/inpaint_canvas/test_base.png" <<'PY'
+import struct
+import sys
+import zlib
+
+W, H = 512, 384
+rows = b"".join(b"\x00" + b"".join(bytes((x * 255 // (W - 1), y * 255 // (H - 1), 128)) for x in range(W)) for y in range(H))
+
+
+def chunk(tag, data):
+    body = tag + data
+    return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body))
+
+
+png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", W, H, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b"")
+open(sys.argv[1], "wb").write(png)
+PY
+fi
 export PYTHONIOENCODING=utf-8
 export PYTHONUNBUFFERED=1
-T="timeout 420"
+# The dev Electron per platform, a packaged macOS app given as Scumble.app (run its executable), and the timeout
+# command (GNU timeout, Homebrew coreutils' gtimeout on macOS, or none: then gates run without a time limit).
+case "$(uname -s)" in
+  Darwin) ELECTRON=./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron ;;
+  MINGW*|MSYS*|CYGWIN*) ELECTRON=./node_modules/electron/dist/electron.exe ;;
+  *) ELECTRON=./node_modules/electron/dist/electron ;;
+esac
+case "$EXE" in *.app|*.app/) EXE="${EXE%/}/Contents/MacOS/$(basename "${EXE%/}" .app)" ;; esac
+if command -v timeout > /dev/null; then TO=timeout; elif command -v gtimeout > /dev/null; then TO=gtimeout; else TO=""; fi
+T="${TO:+$TO 420}"
 
 if curl -s -m 2 http://127.0.0.1:$PORT/json/version > /dev/null; then
   echo "an instance already listens on $PORT, closing it" | tee -a "$OUT/summary.txt"
@@ -79,7 +113,7 @@ if [ "$needs_app" = 1 ]; then
     "$EXE" --remote-debugging-port=$PORT --user-data-dir="$PROFILE" $COPY $TILEARG $OFFLINE > "$OUT/app.log" 2>&1 &
   else
     if [ "$STRICT" = 1 ]; then export SCUMBLE_STRICT=1; else export SCUMBLE_STRICT=0; fi
-    ./node_modules/electron/dist/electron.exe . --remote-debugging-port=$PORT --user-data-dir="$PROFILE" $COPY $OFFLINE > "$OUT/app.log" 2>&1 &
+    $ELECTRON . --remote-debugging-port=$PORT --user-data-dir="$PROFILE" $COPY $OFFLINE > "$OUT/app.log" 2>&1 &
   fi
   for i in $(seq 1 90); do
     curl -s -m 2 http://127.0.0.1:$PORT/json/version > /dev/null && break
@@ -95,34 +129,34 @@ for g in "$@"; do
     smoke) q0=$(curl -s -m 5 http://127.0.0.1:8188/queue); $T python tools/smoke_test.py "$OUT/smoke" --no-helpers > "$OUT/$g.log" 2>&1; rc=$?; q1=$(curl -s -m 5 http://127.0.0.1:8188/queue); echo "queue before $q0 after $q1" >> "$OUT/$g.log" ;;
     mcp) if [ -n "$EXE" ]; then $T python tools/mcp_test.py --exe "$EXE" --user-data-dir "$PROFILE" "$OUT/mcp" > "$OUT/$g.log" 2>&1; else $T python tools/mcp_test.py --user-data-dir "$PROFILE" "$OUT/mcp" > "$OUT/$g.log" 2>&1; fi; rc=$? ;;
     commands) $T python tools/commands_test.py "$OUT/commands" > "$OUT/$g.log" 2>&1; rc=$? ;;
-    assistant) timeout 900 python tools/assistant_test.py --user-data-dir "$PROFILE" ${EXE:+--exe "$EXE"} "$OUT/assistant" > "$OUT/$g.log" 2>&1; rc=$? ;;
+    assistant) ${TO:+$TO 900} python tools/assistant_test.py --user-data-dir "$PROFILE" ${EXE:+--exe "$EXE"} "$OUT/assistant" > "$OUT/$g.log" 2>&1; rc=$? ;;
     film) $T python tools/film_test.py "$OUT/film" > "$OUT/$g.log" 2>&1; rc=$? ;;
     nodecopy) NC="$SP/nodecopy"; rm -rf "$NC"; mkdir -p "$NC"; (cd "/f/Comfyui/ComfyUI_windows_portable_nvidia/ComfyUI/custom_nodes/ComfyUI-InpaintCanvas" && tar --exclude=.git --exclude=__pycache__ -cf - .) | (cd "$NC" && tar -xf -); { $T python tools/build_node.py --node "$NC" && $T python tools/build_node.py --node "$NC" --check && $T python tools/node_test.py --node "$NC"; } > "$OUT/$g.log" 2>&1; rc=$? ;;
     node) $T python tools/build_node.py --check > "$OUT/$g.log" 2>&1 && $T python tools/node_test.py >> "$OUT/$g.log" 2>&1; rc=$? ;;
     perf:*) $T python tools/perf_test.py ${g#perf:} > "$OUT/perf.log" 2>&1; rc=$? ;;
     # no app and no Python: the four rules that catch what `node --check` cannot see
-    lint) timeout 600 npx eslint . > "$OUT/lint.log" 2>&1; rc=$? ;;
+    lint) ${TO:+$TO 600} npx eslint . > "$OUT/lint.log" 2>&1; rc=$? ;;
     # no app and no Python either: the three contracts, checked by tsc (docs/PLAN_TYPES.md)
-    types) timeout 600 npx tsc --noEmit -p tsconfig.check.json > "$OUT/types.log" 2>&1; rc=$? ;;
-    pxjobs) timeout 1200 python tools/px_jobs.py --check > "$OUT/pxjobs.log" 2>&1; rc=$? ;;
-    huge:*) timeout 3000 python tools/huge_test.py ${g#huge:} > "$OUT/huge.log" 2>&1; rc=$? ;;
+    types) ${TO:+$TO 600} npx tsc --noEmit -p tsconfig.check.json > "$OUT/types.log" 2>&1; rc=$? ;;
+    pxjobs) ${TO:+$TO 1200} python tools/px_jobs.py --check > "$OUT/pxjobs.log" 2>&1; rc=$? ;;
+    huge:*) ${TO:+$TO 3000} python tools/huge_test.py ${g#huge:} > "$OUT/huge.log" 2>&1; rc=$? ;;
     # quit safety: it starts and ends its own instances (port +17, a profile under $OUT/quit), so no app of the runner's;
     # quit:15000x10000 is the 15k measurement of the close alone
-    quit) timeout 900 python tools/quit_test.py ${EXE:+--exe "$EXE"} --out "$OUT/quit" > "$OUT/quit.log" 2>&1; rc=$? ;;
-    quit:*) timeout 1800 python tools/quit_test.py ${EXE:+--exe "$EXE"} --size ${g#quit:} --only close --out "$OUT/quit" > "$OUT/quit.log" 2>&1; rc=$? ;;
+    quit) ${TO:+$TO 900} python tools/quit_test.py ${EXE:+--exe "$EXE"} --out "$OUT/quit" > "$OUT/quit.log" 2>&1; rc=$? ;;
+    quit:*) ${TO:+$TO 1800} python tools/quit_test.py ${EXE:+--exe "$EXE"} --size ${g#quit:} --only close --out "$OUT/quit" > "$OUT/quit.log" 2>&1; rc=$? ;;
     # .scumble documents (docs/PLAN_DOCUMENTS.md D5): like quit, it starts, kills and ends its own instances (port +17,
     # profiles under $OUT/document); runs tools/document_test.js first
-    document) timeout 1500 python tools/document_test.py ${EXE:+--exe "$EXE"} --out "$OUT/document" > "$OUT/document.log" 2>&1; rc=$? ;;
+    document) ${TO:+$TO 1500} python tools/document_test.py ${EXE:+--exe "$EXE"} --out "$OUT/document" > "$OUT/document.log" 2>&1; rc=$? ;;
     # tiffperf:15000x10000: a TIFF export and open of a noise picture at size (docs/PLAN_0_1_29.md 3d, the 15k measurement)
-    tiffperf:*) timeout 3600 python tools/tiff_test.py --size ${g#tiffperf:} --out "$OUT/tiffperf" > "$OUT/tiffperf.log" 2>&1; rc=$? ;;
-    exportperf:*) timeout 1800 python tools/export_test.py --perf $(echo "${g#exportperf:}" | tr ',' ' ') > "$OUT/exportperf.log" 2>&1; rc=$? ;;
+    tiffperf:*) ${TO:+$TO 3600} python tools/tiff_test.py --size ${g#tiffperf:} --out "$OUT/tiffperf" > "$OUT/tiffperf.log" 2>&1; rc=$? ;;
+    exportperf:*) ${TO:+$TO 1800} python tools/export_test.py --perf $(echo "${g#exportperf:}" | tr ',' ' ') > "$OUT/exportperf.log" 2>&1; rc=$? ;;
     # mem:15000x10000,--rounds,4 (commas for spaces); four rounds at 15k take longer than the other gates' 420 s
-    mem:*) timeout 2400 python tools/mem_test.py $(echo "${g#mem:}" | tr ',' ' ') > "$OUT/mem.log" 2>&1; rc=$? ;;
+    mem:*) ${TO:+$TO 2400} python tools/mem_test.py $(echo "${g#mem:}" | tr ',' ' ') > "$OUT/mem.log" 2>&1; rc=$? ;;
     # docux: the window's side of .scumble documents (dirty marker, close questions, reopen, history question, commands, a
     # second start with a path) against the runner's app; the second start uses the runner's profile (and --exe)
-    docux) SCUMBLE_EXE="$EXE" timeout 900 python tools/document_ux_test.py --out "$OUT/docux" > "$OUT/docux.log" 2>&1; rc=$? ;;
+    docux) SCUMBLE_EXE="$EXE" ${TO:+$TO 900} python tools/document_ux_test.py --out "$OUT/docux" > "$OUT/docux.log" 2>&1; rc=$? ;;
     # docperf:15000x10000: a .scumble save and open at size against the runner's app (docs/PLAN_DOCUMENTS.md §7 D5)
-    docperf:*) timeout 3600 python tools/document_perf.py ${g#docperf:} --out "$OUT/docperf" > "$OUT/docperf.log" 2>&1; rc=$? ;;
+    docperf:*) ${TO:+$TO 3600} python tools/document_perf.py ${g#docperf:} --out "$OUT/docperf" > "$OUT/docperf.log" 2>&1; rc=$? ;;
     *) $T python "tools/${g}_test.py" > "$OUT/$g.log" 2>&1; rc=$? ;;
   esac
   verdict=$(grep -aE "(^PASS|^FAIL|^RESULT)" "$OUT/${g%%:*}.log" | tail -1)

@@ -32,6 +32,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cdp import session  # noqa: E402
+from electron_path import app_executable, dev_electron, packaged_asar  # noqa: E402
 from assistant_mock import Mock, Turn  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -51,11 +52,11 @@ if "--user-data-dir" in args:
 OUT = os.path.abspath(args[0] if args else os.path.join(ROOT, "dist", "smoke"))
 os.makedirs(OUT, exist_ok=True)
 
-DEV_EXE = os.path.join(ROOT, "node_modules", "electron", "dist", "electron.exe" if os.name == "nt" else "electron")
-EXE = EXE or DEV_EXE
+DEV_EXE = dev_electron()
+EXE = app_executable(EXE) if EXE else DEV_EXE
 IS_ELECTRON = "electron" in os.path.basename(EXE).lower()
 LAUNCHER = os.path.join(ROOT, "electron", "main", "mcp", "launch.js") if IS_ELECTRON else \
-    os.path.join(os.path.dirname(EXE), "resources", "app.asar", "electron", "main", "mcp", "launch.js")
+    os.path.join(packaged_asar(EXE), "electron", "main", "mcp", "launch.js")
 
 # every key row the assistant reads (electron/main/assistant/providers.js); each gets a test key
 ROWS = ["anthropic", "openai", "gemini", "openrouter", "deepseek", "moonshot", "zai", "toapis", "wavespeed", "oxen", "compat"]

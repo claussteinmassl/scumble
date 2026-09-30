@@ -30,7 +30,9 @@ sys.path.insert(0, HERE)
 from cdp import session  # noqa: E402
 
 OUT = sys.argv[sys.argv.index("--out") + 1] if "--out" in sys.argv else os.path.join(os.environ.get("SCUMBLE_GATES", os.path.join(ROOT, "dist", "gates")), "docux")
-ELECTRON = os.path.join(ROOT, "node_modules", "electron", "dist", "electron.exe")
+from electron_path import dev_electron  # noqa: E402
+
+ELECTRON = dev_electron()
 
 PRE = r"""
 (async () => {
