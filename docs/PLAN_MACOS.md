@@ -50,7 +50,7 @@ secrets are set.
 ### 3. Renderer
 - Mouse and drag modifiers that check `e.ctrlKey` alone (12 sites in `inpaint_canvas.js` and `prompt_field.js`) accept
   Cmd too, via one helper, as the key handlers already do. On macOS Ctrl+click is the context menu.
-- Shortcut labels: "Ctrl+" in tooltips, menus of the renderer and the help reads "⌘" on darwin, through one helper
+- Shortcut labels: "Ctrl+" in tooltips and status lines reads "Cmd+" on darwin, through one helper
   applied where the labels are built (no rewrite of every string literal).
 
 ### 4. CI (`.github/workflows/build.yml`)
