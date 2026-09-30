@@ -16,6 +16,7 @@
 //   `textContent` (`renderText`), so a picture's text, a layer name or a log line can never
 //   become HTML. `no_markup_writes` in tools/assistant_test.js holds this file to it.
 import { host } from "./editor/host.js";
+import { keyText } from "./editor/platform.js";
 import { turnState, restoreTurn, forgetTurns } from "./assistant_turns.js";
 import { protectAsk, releaseAsk } from "./skins.js";
 
@@ -133,7 +134,7 @@ export function initAssistant(options = {}) {
     ui.chats.title = "The chats on disk";
     ui.close = el("button", null, "×");
     ui.close.type = "button";
-    ui.close.title = "Close the assistant (Ctrl+Shift+A)";
+    ui.close.title = keyText("Close the assistant (Ctrl+Shift+A)");
     const row = el("div", "as-head-row");
     row.appendChild(ui.model);
     row.appendChild(ui.chats);
@@ -629,7 +630,7 @@ function askThenUndo(card, button) {
     }
     button.textContent = "Turn taken back";
     if (out.missing && out.missing.length) card.appendChild(el("div", "as-reason", `document${out.missing.length > 1 ? "s" : ""} ${out.missing.join(", ")} could not be restored (closed)`));
-    card.appendChild(el("div", "as-note", "Ctrl+Z takes this restore back; the steps of the turn stay on the stack below it."));
+    card.appendChild(el("div", "as-note", keyText("Ctrl+Z takes this restore back; the steps of the turn stay on the stack below it.")));
     api().turnUndone(out.turn, out.docs).catch(() => { /* the model is told at the next turn anyway */ });
 }
 

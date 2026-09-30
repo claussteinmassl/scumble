@@ -18,6 +18,7 @@ import { prepareCropAsync, finishResultAsync, bytesToImage, transparentPixels, c
 import { glReleasePool } from "./inpaint_filters_gl.js";
 import { withoutSecrets } from "./redact.js";
 import { parse, toMarkers, namesFor, hasTokens, remap, referencesText, referencesRule, referenceName } from "./reftokens.js";
+import { IS_MAC } from "./platform.js";
 import { comfyRefSpec, comfyLayout, trimSlots, refName, resolveMarkers as resolveComfyMarkers } from "./comfyrefs.js";
 
 const PROXY = "/comfy";
@@ -69,11 +70,10 @@ function fmtMB(n) { return n >= 1073741824 ? (n / 1073741824).toFixed(2) + " GB"
  * path, as APFS's default volume ignores case (a case-sensitive one is rare, and folding there only takes two files
  * that differ in case for one document).
  */
-const ON_MAC = typeof navigator !== "undefined" && /^mac/i.test(String(navigator.platform || ""));
 function normPath(p) {
     const s = String(p || "").replace(/\//g, "\\");
     if (/^[a-z]:\\|^\\\\/i.test(s)) return s.toLowerCase();
-    return ON_MAC ? String(p || "").toLowerCase() : String(p || "");
+    return IS_MAC ? String(p || "").toLowerCase() : String(p || "");
 }
 
 /**

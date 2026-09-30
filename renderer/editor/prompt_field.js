@@ -13,6 +13,7 @@
 // `document` or `window` at import time, so tools/prompt_field_test.js runs the helpers in plain Node.
 
 import { parse, normalize, hasTokens, diffRange, mapOffset, TOKEN } from "./reftokens.js";
+import { cmdKey } from "./platform.js";
 
 export { diffRange, mapOffset };
 
@@ -1711,7 +1712,7 @@ export class PromptField {
         e.preventDefault();
         e.stopPropagation();
         if (this.el.getAttribute("aria-disabled") === "true") { dt.dropEffect = "none"; return; }
-        dt.dropEffect = inner && !e.ctrlKey ? "move" : "copy";
+        dt.dropEffect = inner && !cmdKey(e) ? "move" : "copy";
         const off = this.pointOffset(e.clientX, e.clientY);
         if (off == null) this.hideDropCaret(); else this.showDropCaret(off);
     }
@@ -1735,7 +1736,7 @@ export class PromptField {
             this.addReferences(files);
             return;
         }
-        if (inner && Array.from(dt.types || []).includes(RANGE_TYPE)) { this.moveRange(inner[0], inner[1], at, e.ctrlKey); return; }
+        if (inner && Array.from(dt.types || []).includes(RANGE_TYPE)) { this.moveRange(inner[0], inner[1], at, cmdKey(e)); return; }
         const d = dt.getData("text/plain");
         if (!d) return;
         this.pre = { text: this.text, start: at, end: at };

@@ -2,6 +2,7 @@
 // per document), the settings dialog (ComfyUI connection with auth, API provider keys,
 // recipes, local files) and the menu commands.
 import { host, api } from "./editor/host.js";
+import { IS_MAC, keyText } from "./editor/platform.js";
 import { InpaintEditor, STYLE as EDITOR_STYLE } from "./editor/inpaint_canvas.js";
 import { glFiltersAvailable } from "./editor/inpaint_filters_gl.js";
 import { setPixelsOptions } from "./editor/inpaint_pixels.js";
@@ -25,6 +26,9 @@ if (!document.getElementById("ipc-style")) {
 }
 
 const $ = (id) => document.getElementById(id);
+
+// index.html's tooltips name shortcuts as Windows types them; on a Mac they read Cmd (the code-built ones go through keyText)
+if (IS_MAC) for (const n of document.querySelectorAll('[title*="Ctrl"]')) n.title = keyText(n.title);
 
 // the editor's pixel access (docs/PLAN_BCE.md C1, electron/main/main.js): a dev build is strict, so the
 // old layer.canvas / layer.mask / editor.selection names throw instead of warning (SCUMBLE_STRICT=0 turns
@@ -210,7 +214,7 @@ function renderTabs() {
             tab.appendChild(chip);
         }
         const close = document.createElement("span");
-        close.className = "shell-tab-close"; close.textContent = "×"; close.title = "Close tab (Ctrl+W)";
+        close.className = "shell-tab-close"; close.textContent = "×"; close.title = keyText("Close tab (Ctrl+W)");
         close.addEventListener("click", (e) => { e.stopPropagation(); closeDocument(ed); });
         tab.appendChild(close);
         tab.addEventListener("click", () => activate(ed));
@@ -444,10 +448,10 @@ function providerKeyState(r) {
     const p = providers.find((x) => x.id === r.provider);
     if (r.provider === "inapp") {
         // no key: the model in the app's model folder (Settings › Helpers)
-        return host.presentHelpers("inpaint").some((m) => m.id === r.model) ? { ok: true } : { ok: false, text: "the LaMa model is not downloaded yet: Settings (Ctrl+,) › Helpers (in-app models)" };
+        return host.presentHelpers("inpaint").some((m) => m.id === r.model) ? { ok: true } : { ok: false, text: keyText("the LaMa model is not downloaded yet: Settings (Ctrl+,) › Helpers (in-app models)") };
     }
     if (!p) return r.provider === "loopback" ? { ok: true } : { ok: false, text: `unknown provider "${r.provider}"` };
-    return p.key && p.key.set ? { ok: true } : { ok: false, text: `no ${p.label} key yet: Settings (Ctrl+,) › API providers` };
+    return p.key && p.key.set ? { ok: true } : { ok: false, text: keyText(`no ${p.label} key yet: Settings (Ctrl+,) › API providers`) };
 }
 
 async function rememberProvider(recipeId, providerId) {

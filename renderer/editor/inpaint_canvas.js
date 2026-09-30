@@ -38,6 +38,7 @@ import { LAYERED_EXT, isPsd, isOra, readPsd, readOra } from "./inpaint_layered.j
 import { THEME } from "./inpaint_theme.js";
 import { XF_IDENTITY, xfMul, xfInv, xfApply, xfBox, xfTranslate, xfScale, xfRotate, pixelMap } from "./inpaint_resample.js";
 import { removeCrop, toModelImage, toModelMask, fromModel } from "./inpaint_remove.js";
+import { cmdKey, keyText } from "./platform.js";
 import { LiquifyField, gridStep, previewBlock, liquifyFalloff } from "./inpaint_liquify.js";
 import { labelMap, sameLabels, remap, mapOffset, namesFor, parse, normalize, compare, checkNote, referencesText, referencesRule } from "./reftokens.js";
 
@@ -1245,7 +1246,7 @@ function icon(name, size = 18) {
 function iconButton(name, title, onClick, label) {
     const b = el("button", "ipc-ib");
     b.type = "button";
-    b.title = title;
+    b.title = keyText(title);
     b.innerHTML = icon(name) + (label ? `<span>${label}</span>` : "");
     b.addEventListener("click", (e) => { e.stopPropagation(); e.preventDefault(); onClick(e); });
     return b;
@@ -1254,7 +1255,7 @@ function iconButton(name, title, onClick, label) {
 function miniButton(name, title, onClick, cls = "") {
     const b = el("button", "ipc-mini " + cls);
     b.type = "button";
-    b.title = title;
+    b.title = keyText(title);
     b.innerHTML = icon(name, 16);
     b.addEventListener("click", (e) => { e.stopPropagation(); onClick(e); });
     return b;
@@ -1954,7 +1955,7 @@ class InpaintEditor {
             const files = Array.from((e.dataTransfer && e.dataTransfer.files) || []).filter((f) => f.type.startsWith("image/") || TIFF_EXT.test(f.name || ""));
             if (!files.length) return;
             // no base yet or Ctrl held: (re)load the base; otherwise every file becomes a new image layer
-            if (!this.width || e.ctrlKey) this.loadFile(files[0]);
+            if (!this.width || cmdKey(e)) this.loadFile(files[0]);
             else this.addImageLayers(files, e.shiftKey ? "reference" : "none", e.shiftKey ? {} : { place: "fit" });
         });
         root.addEventListener("wheel", (e) => e.stopPropagation(), { passive: true });
@@ -2417,7 +2418,7 @@ class InpaintEditor {
         };
         if (tool === "canvas") this.syncFrameControls();
         const hints = { canvas: "Edges crop or extend, outside turns, Ctrl+drag straightens; Enter or a double click applies, Esc resets", shape: shapeHints[this.shapeOpts.kind] || "", select: "Paint to select, Alt subtracts", deselect: "Paint to deselect", paint: "Alt+click picks a colour, Shift+click draws a line", erase: "Shift+click draws a line", wand: "Click to select the similar area; Shift adds, Alt subtracts", bucket: "Click to fill; Shift+F fills the whole selection", gradient: "Drag from the colour to where it should have faded", eyedropper: "Click to pick a colour", smudge: this.smudgeOpts && this.smudgeOpts.mode === "blur" ? "Paint over what should soften" : this.smudgeOpts && this.smudgeOpts.mode === "sharpen" ? "Paint over what should crisp up; a little goes a long way" : "Drag across an edge to soften it", tone: this.toneHint(), remove: "Brush over what should go: it is filled from its surroundings when you let go", patch: this.patchOpts.mode === "destination" ? "Lasso what to copy, then drag the selection to where the copy should go" : "Lasso the spot, then drag the selection to where the picture is right", contentmove: this.moveOpts.mode === "extend" ? "Lasso what to copy, then drag it: the copy blends in where you let go" : "Lasso the object, then drag it: it blends in where you let go, and its old place is filled", liquify: this.liquifyHint(), clone: this.cloneSource ? "Paint to copy from the source (Alt+click moves it)" : "Alt+click sets the source point", heal: this.cloneSource ? "Paint to repair with the source's texture (Alt+click moves it)" : "Alt+click sets the source point" };
-        this.optsHint.textContent = hints[tool] || "";
+        this.optsHint.textContent = keyText(hints[tool] || "");
     }
 
     updateSubbar() {
@@ -2789,16 +2790,16 @@ class InpaintEditor {
                 }
             }
         });
-        this.viewEl.addEventListener("dragover", (e) => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = e.ctrlKey && this.width ? "move" : "copy"; this.viewEl.classList.add("ipc-dropping"); });
+        this.viewEl.addEventListener("dragover", (e) => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = cmdKey(e) && this.width ? "move" : "copy"; this.viewEl.classList.add("ipc-dropping"); });
         this.viewEl.addEventListener("dragleave", (e) => { if (!this.viewEl.contains(e.relatedTarget)) this.viewEl.classList.remove("ipc-dropping"); });
         this.viewEl.addEventListener("drop", (e) => {
             e.preventDefault(); e.stopPropagation();
             this.viewEl.classList.remove("ipc-dropping");
             const files = Array.from((e.dataTransfer && e.dataTransfer.files) || []).filter((f) => f.type.startsWith("image/") || LAYERED_EXT.test(f.name || "") || TIFF_EXT.test(f.name || ""));
             if (!files.length) return;
-            // No image yet, or Ctrl held: the file becomes (replaces) the base. Otherwise each file is a new
+            // No image yet, or Ctrl (Cmd on a Mac) held: the file becomes (replaces) the base. Otherwise each file is a new
             // image layer centred on the drop point (Shift: reference layers), like dropping into Krita.
-            if (!this.width || e.ctrlKey) { this.loadFile(files[0]); return; }
+            if (!this.width || cmdKey(e)) { this.loadFile(files[0]); return; }
             if (e.shiftKey) { this.addImageLayers(files, "reference"); return; }
             this.addImageLayers(files, "none", { place: "at", at: this.toImage(e) });
         });
@@ -2907,6 +2908,7 @@ class InpaintEditor {
     }
 
     setStatus(text) {
+        text = keyText(text);
         this.status = text;
         if (this.statusEl) this.statusEl.textContent = text;
         if (this.nodeStatus) this.nodeStatus.textContent = text;
@@ -5035,8 +5037,8 @@ class InpaintEditor {
                 if (g && this.tool !== "hand") { this.pointer = { kind: "guide", axis: g.axis, index: g.index, pos: this.guides[g.axis][g.index] }; return; }
             }
         }
-        if (e.ctrlKey && !e.altKey && !e.shiftKey && !this.quickMask && ["transform", "paint", "erase", "text"].includes(this.tool)) {
-            // Ctrl+click: the topmost layer with a visible pixel under the cursor becomes active (Photoshop's auto-select)
+        if (cmdKey(e) && !e.altKey && !e.shiftKey && !this.quickMask && ["transform", "paint", "erase", "text"].includes(this.tool)) {
+            // Ctrl+click (Cmd+click on a Mac): the topmost layer with a visible pixel under the cursor becomes active (Photoshop's auto-select)
             const l = this.pickLayerAt(ix, iy);
             if (this.pending) this.cancelPending();
             this.activeLayerId = l ? l.id : null;
@@ -5055,7 +5057,7 @@ class InpaintEditor {
             this.wandSelect(ix, iy, selMode);
             return;
         } else if (this.tool === "rect" || this.tool === "ellipse") {
-            const moveSel = selMode === "replace" && !e.ctrlKey && this.selectedAt(ix, iy);
+            const moveSel = selMode === "replace" && !cmdKey(e) && this.selectedAt(ix, iy);
             this.pushUndo({ kind: "selection", label: moveSel ? "Move selection" : this.tool === "ellipse" ? "Ellipse selection" : "Rectangle selection" });
             if (moveSel) {
                 // dragging inside the selection moves its outline (Photoshop's marquee tools)
@@ -5067,12 +5069,12 @@ class InpaintEditor {
                 const ext = this.selectionExtent({ exact: true });
                 this.pointer = { kind: "selmove", start: [ix, iy], orig, origBounds: this.getBounds(), ext, lastExt: ext };
             } else {
-                this.pointer = { kind: "rect", ellipse: this.tool === "ellipse", square: e.ctrlKey, start: [ix, iy], cur: [ix, iy], startPx: this.toCanvasPx(e), mode: selMode };
+                this.pointer = { kind: "rect", ellipse: this.tool === "ellipse", square: cmdKey(e), start: [ix, iy], cur: [ix, iy], startPx: this.toCanvasPx(e), mode: selMode };
             }
         } else if (this.tool === "lasso" || this.tool === "patch" || this.tool === "contentmove") {
             // patch and the content-aware move drag the selection when pressed inside it (the marquee's rule) and draw a
             // lasso elsewhere
-            if (this.tool !== "lasso" && selMode === "replace" && !e.ctrlKey && this.selectedAt(ix, iy)) this.patchPress(e, ix, iy);
+            if (this.tool !== "lasso" && selMode === "replace" && !cmdKey(e) && this.selectedAt(ix, iy)) this.patchPress(e, ix, iy);
             else {
                 this.pushUndo({ kind: "selection", label: "Lasso selection" });
                 this.pointer = { kind: "lasso", mode: selMode };
@@ -5349,7 +5351,7 @@ class InpaintEditor {
                 const [cx, cy] = this.toCanvasPx(e);
                 if (Math.hypot(cx - p.startPx[0], cy - p.startPx[1]) > 3) p.moved = true;
             }
-            if (p.square || e.ctrlKey) {
+            if (p.square || cmdKey(e)) {
                 const dx = ix - p.start[0], dy = iy - p.start[1], m = Math.max(Math.abs(dx), Math.abs(dy));
                 p.cur = [p.start[0] + Math.sign(dx || 1) * m, p.start[1] + Math.sign(dy || 1) * m];
             } else p.cur = [ix, iy];
@@ -9281,7 +9283,7 @@ class InpaintEditor {
         if (p.shape === "freehand") {
             const [lx, ly] = p.path[p.path.length - 1];
             if (Math.hypot(ix - lx, iy - ly) >= 1) p.path.push([ix, iy]);
-        } else if (e && (e.shiftKey || e.ctrlKey)) {
+        } else if (e && (e.shiftKey || cmdKey(e))) {
             const dx = ix - p.start[0], dy = iy - p.start[1], m = Math.max(Math.abs(dx), Math.abs(dy));
             p.cur = [p.start[0] + Math.sign(dx || 1) * m, p.start[1] + Math.sign(dy || 1) * m];
         } else {
@@ -14657,7 +14659,7 @@ class InpaintEditor {
             thumb.dataset.hist = i;   // redrawThumbsOf finds it when the layer's mips land (C6 b)
             thumb.title = "Solo: show only this result";
             this.drawHistoryThumb(thumb, h);
-            thumb.addEventListener("click", (e) => { e.stopPropagation(); if (e.ctrlKey || e.shiftKey) { this.setCompare(e.ctrlKey ? "a" : "b", h); return; } this.soloResult(h); });
+            thumb.addEventListener("click", (e) => { e.stopPropagation(); if (cmdKey(e) || e.shiftKey) { this.setCompare(cmdKey(e) ? "a" : "b", h); return; } this.soloResult(h); });
             item.appendChild(thumb);
             const text = el("div", "ipc-htext");
             const title = el("b", null, h.name + (layer ? "" : " (discarded)"));

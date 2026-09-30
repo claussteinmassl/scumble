@@ -6,6 +6,7 @@
 import { host } from "./host.js";
 import { el, iconButton, miniButton, selectInput, numberInput, hostText, REF_FITS, REF_DEFAULTS, UPSAMPLE_CASES, randomSeed, brushSizeToSlider, sliderToBrushSize } from "./inpaint_canvas.js";
 import { PromptField, RefBar } from "./prompt_field.js";
+import { keyText } from "./platform.js";
 
 /**
  * The whole dialog of one editor. The order is the one the method had, and the two joints it kept
@@ -47,7 +48,7 @@ export function buildEditorModal(ed) {
     const bottom = el("div", "ipc-bottom");
     ed.statusEl = el("span", null, ed.status);
     bottom.appendChild(ed.statusEl);
-    bottom.appendChild(el("span", "ipc-kbd", host.overlay ? "Wheel: zoom · Space/middle: pan · [ ]: size · Esc: close" : "Wheel: zoom · Space/middle: pan · [ ]: size · Ctrl+Enter: generate"));
+    bottom.appendChild(el("span", "ipc-kbd", keyText(host.overlay ? "Wheel: zoom · Space/middle: pan · [ ]: size · Esc: close" : "Wheel: zoom · Space/middle: pan · [ ]: size · Ctrl+Enter: generate")));
     root.appendChild(bottom);
 
     ed.bindEvents();
@@ -302,7 +303,7 @@ function buildView(ed, body) {
     ed.canvas = document.createElement("canvas");
     ed.ctx = ed.canvas.getContext("2d");
     ed.viewEl.appendChild(ed.canvas);
-    ed.dropHint = el("div", "ipc-drop", "Load an image, paste it (Ctrl+V) or drop it here.\nThen paint a selection and press Generate.\nOnce an image is loaded, dropped files become new layers (Shift: reference, Ctrl: replace the image).");
+    ed.dropHint = el("div", "ipc-drop", keyText("Load an image, paste it (Ctrl+V) or drop it here.\nThen paint a selection and press Generate.\nOnce an image is loaded, dropped files become new layers (Shift: reference, Ctrl: replace the image)."));
     ed.viewEl.appendChild(ed.dropHint);
     ed.buildSubbar();
     ed.buildOptsBar();
