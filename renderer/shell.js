@@ -1997,6 +1997,7 @@ function updateText(s) {
     if (!s) return "";
     if (s.state === "dev") return "Not packaged: updates are checked in the installed app only.";
     if (s.state === "store") return `Scumble ${s.current} from the Microsoft Store: the Store installs its updates.`;
+    if (s.state === "manual") return `Scumble ${s.current} for macOS: new versions are downloaded from GitHub Releases.`;
     if (s.state === "checking") return "Checking for updates ...";
     if (s.state === "latest") return s.manual ? `Scumble ${s.current} is up to date.` : "";
     if (s.state === "downloading") return `Downloading Scumble ${s.version} ... ${s.percent == null ? "" : s.percent + "%"}`;
@@ -2014,8 +2015,8 @@ export function renderUpdate(s) {
     ui.updateNotes.hidden = !notes;
     ui.updateInstall.hidden = !(s && s.state === "downloaded");
     ui.updateCheck.disabled = !!(s && (s.state === "checking" || s.state === "downloading"));
-    // the Store copy is updated by the Store: no feed to check, nothing to switch off
-    const store = !!(s && s.state === "store");
+    // the Store copy is updated by the Store, the macOS app by a download: no feed to check, nothing to switch off
+    const store = !!(s && (s.state === "store" || s.state === "manual"));
     ui.updateCheck.hidden = store;
     ui.updateAuto.parentElement.hidden = store;
     ui.updateHelp.hidden = store;

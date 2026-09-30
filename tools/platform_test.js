@@ -1,7 +1,8 @@
 // The per-platform parts of the build and of the app that need no app to check (plain Node):
 // the MCP registration of every platform (electron/main/mcp/registration.js), the files
-// each installer leaves out (package.json build.win.files / build.linux.files), and the
-// Microsoft Store package (electron/main/msix.js, build/AppxManifest.xml, build/appx).
+// each installer leaves out (package.json build.win.files / build.linux.files), the
+// Microsoft Store package (electron/main/msix.js, build/AppxManifest.xml, build/appx) and the
+// local command socket's path on each platform (electron/main/local.js).
 //
 //   node tools/platform_test.js
 "use strict";
@@ -50,6 +51,32 @@ check("appimage_is_read_on_linux_only", () => {
     // a stray APPIMAGE variable on Windows (or an empty one on Linux) changes nothing
     eq(server({ ...WIN, appImage: "C:\\x.AppImage" }), server(WIN), "windows");
     eq(server({ ...DEB, appImage: "" }), server(DEB), "empty");
+});
+
+// ---- the local command socket (electron/main/local.js) --------------------------------
+
+const { socketPath } = require("../electron/main/local");
+// a gate profile under a synced checkout: far longer than the 104 bytes macOS allows a socket path
+const LONG_USERDATA = "/Users/someone/Library/CloudStorage/Dropbox/dev/scumble/dist/gates/assistant/profile/with/a/long/tail/userData";
+
+check("the_mac_socket_lies_in_the_temporary_folder_and_fits_104_bytes", () => {
+    const p = socketPath(LONG_USERDATA, "darwin", "/var/folders/l0/jxj1d8b97lzf3v73_5z99xcm0000gn/T/");
+    if (!p.startsWith("/var/folders/l0/jxj1d8b97lzf3v73_5z99xcm0000gn/T/scumble-") || !p.endsWith(".sock")) throw new Error("not in the temporary folder: " + p);
+    if (Buffer.byteLength(p) > 103) throw new Error(`${Buffer.byteLength(p)} bytes: ${p}`);
+    // the default folder is the system's, and still short
+    const d = socketPath(LONG_USERDATA, "darwin");
+    if (Buffer.byteLength(d) > 103 || d.includes("CloudStorage")) throw new Error("the default: " + d);
+    // two profiles, two sockets; the same profile in another case, the same one (as the Windows pipe)
+    if (socketPath(LONG_USERDATA + "2", "darwin") === d) throw new Error("two profiles share a socket");
+    eq(socketPath(LONG_USERDATA.toUpperCase(), "darwin"), d, "case");
+});
+
+check("the_windows_and_linux_sockets_are_what_they_were", () => {
+    // the text local.js computed before the macOS build, for a fixed folder
+    const hash = require("node:crypto").createHash("sha1").update(LONG_USERDATA.toLowerCase()).digest("hex").slice(0, 12);
+    eq(socketPath(LONG_USERDATA, "win32"), `\\\\.\\pipe\\scumble-${hash}`, "win32");
+    eq(socketPath(LONG_USERDATA, "linux"), path.join(LONG_USERDATA, "scumble.sock"), "linux");
+    eq(socketPath(LONG_USERDATA), socketPath(LONG_USERDATA, process.platform), "this platform");
 });
 
 // ---- the Microsoft Store package ------------------------------------------------------

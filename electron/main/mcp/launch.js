@@ -37,7 +37,7 @@ function resolveChild() {
     try {
         exe = require("electron");
     } catch {
-        fail("run me with electron.exe (ELECTRON_RUN_AS_NODE=1) or install the electron package");
+        fail("run me with electron.exe or Scumble.app/Contents/MacOS/Scumble (ELECTRON_RUN_AS_NODE=1), or install the electron package");
     }
     if (typeof exe !== "string") fail("the electron package did not yield a path (are we inside Electron?)");
     return [exe, [root, ...CHILD_ARGS]];

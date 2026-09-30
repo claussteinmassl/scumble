@@ -13,13 +13,36 @@
 const net = require("node:net");
 const path = require("node:path");
 const fs = require("node:fs");
+const os = require("node:os");
 const crypto = require("node:crypto");
+const { execFileSync } = require("node:child_process");
 const { EventEmitter } = require("node:events");
 
-/** The socket path for this user data folder (dev and packaged app share it when they share userData). */
-function socketPath(userData) {
+/**
+ * macOS: the user's own temporary folder (/var/folders/…/T), asked of the system rather than read from $TMPDIR. The
+ * app and a `Scumble --mcp` started by an MCP client must arrive at the same folder, and a client may start that
+ * process with a trimmed environment (Claude Desktop passes HOME, PATH, USER and a few more, not TMPDIR): os.tmpdir()
+ * would say /tmp there while the app listens under /var/folders. Asked once per process; os.tmpdir() when the
+ * system does not answer (not a Mac).
+ */
+let darwinTmp = null;
+function darwinTmpDir() {
+    if (darwinTmp) return darwinTmp;
+    try { darwinTmp = String(execFileSync("/usr/bin/getconf", ["DARWIN_USER_TEMP_DIR"], { encoding: "utf8", timeout: 5000 })).trim(); } catch (_) { /* not a Mac */ }
+    if (!darwinTmp) darwinTmp = os.tmpdir();
+    return darwinTmp;
+}
+
+/**
+ * The socket path for this user data folder (dev and packaged app share it when they share userData). A pure
+ * function of its arguments, so tools/platform_test.js checks every platform's answer on any machine.
+ */
+function socketPath(userData, platform = process.platform, tmpdir = platform === "darwin" ? darwinTmpDir() : os.tmpdir()) {
     const hash = crypto.createHash("sha1").update(String(userData).toLowerCase()).digest("hex").slice(0, 12);
-    if (process.platform === "win32") return `\\\\.\\pipe\\scumble-${hash}`;
+    if (platform === "win32") return `\\\\.\\pipe\\scumble-${hash}`;
+    // macOS allows 104 bytes for a socket path, and a user data folder (a gate profile under a synced checkout) can
+    // be longer than that; the hash keeps two profiles apart as the pipe name does on Windows
+    if (platform === "darwin") return path.join(tmpdir, `scumble-${hash}.sock`);
     return path.join(userData, "scumble.sock");
 }
 

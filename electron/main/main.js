@@ -337,6 +337,9 @@ function createWindow() {
     // the canvas-only view follows the window's full screen: F11 or the OS ending it ends the view too (renderer/shell.js)
     win.on("enter-full-screen", () => send("window:fullScreen", true));
     win.on("leave-full-screen", () => { viewFullScreen = false; send("window:fullScreen", false); });
+    // macOS: a window closed without a quit leaves the app running, and the Dock brings a new one (showWindow). The
+    // close saved and marked the guard done; the new window's close must save again, and its uploads reach ComfyUI
+    if (process.platform === "darwin") win.on("closed", () => { if (!quitting) { mirror.localOnly = false; quitGuard.reset(); } });
     win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: "deny" }; });
     // an unhandled file drop (the shell bar, the tabs, a panel) would navigate the window to the file:
     // every call in flight rejects and the editor is gone. Only the app's own origin may be navigated
@@ -555,6 +558,13 @@ function buildMenu() {
     };
     const template = [
         ...(isMac ? [{ role: "appMenu" }] : []),
+        // macOS: text fields undo, cut, copy, paste and select all through the Edit menu's roles only (on Windows and
+        // Linux Chromium does it itself), so the Mac needs this menu. The roles keep their accelerators: Chromium hands a
+        // Cmd key to the page before the menu (RenderWidgetHostViewCocoa performKeyEquivalent) and passes it on to the
+        // menu only when the page left it unhandled. So on the canvas the editor keeps Cmd+Z / Shift+Z / C / V / X
+        // (inpaint_canvas.js onKey calls preventDefault: layer undo, pixel copy and paste, no second paste event from
+        // the role), and in a text field, where the editor lets the key go, the role does the text action
+        ...(isMac ? [{ label: "Edit", submenu: [{ role: "undo" }, { role: "redo" }, { type: "separator" }, { role: "cut" }, { role: "copy" }, { role: "paste" }, { role: "selectAll" }] }] : []),
         {
             label: "&File",
             submenu: [
@@ -1138,7 +1148,9 @@ function startApp() {
     const upd = settings.get().updates || {};
     if (app.isPackaged && !headless && !agentMode && upd.check !== false) setTimeout(() => updater.check().catch(() => {}), 8000);
     app.on("activate", () => showWindow());
-    app.on("window-all-closed", () => { comfy.disconnect(); app.quit(); });
+    // macOS keeps an app running with no window (the menu bar and the Dock stay); Windows and Linux quit. A quit
+    // (Cmd+Q, the Dock's Quit) closes the window through the same save as a close, then ends up here with `quitting`
+    app.on("window-all-closed", () => { if (process.platform === "darwin" && !quitting) return; comfy.disconnect(); app.quit(); });
 }
 
 /** An agent-started app ends when nobody talks to it any more and no window is shown. */
@@ -1221,5 +1233,13 @@ if (ARGS.mcp || ARGS.cmd) {
 } else {
     app.on("second-instance", onSecondInstance);
     documents.queue(documentArgs(process.argv.slice(1), process.cwd()));   // a double click that started Scumble
+    // macOS hands a document opened from Finder or dropped on the Dock icon to open-file, at launch too (before
+    // ready), never on the command line. Queued like argv: the window takes it after its session restore (send() is
+    // a no-op while there is no window); a running app with its window closed brings one up for it
+    app.on("open-file", (e, file) => {
+        e.preventDefault();
+        try { openDocumentArgs([file], path.dirname(file)); } catch (err) { console.warn("open-file:", err.message); }
+        if (app.isReady() && win) showWindow();
+    });
     app.whenReady().then(startApp);
 }
