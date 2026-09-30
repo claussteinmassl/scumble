@@ -177,7 +177,7 @@ function bundle(tag, pics, empty = 0) {
             const agent = b.indexOf("if (agentMode)"), guard = b.indexOf("quitGuard.onClose()"), prevent = b.indexOf("e.preventDefault();", guard), flush = b.indexOf('quitGuard.run(() => flushAll("quit"))'), close = b.indexOf("win.close()", flush);
             assert(agent >= 0 && guard > agent, "the guard is not asked after the agent branch");
             assert(prevent > guard && flush > prevent && close > flush, "the close is not prevented, saved, then closed again");
-            assert(/if \(what === "allow"\) return;/.test(b), "an allowed close does not go through");
+            assert(/if \(what === "allow"\) \{ (?:if \(process\.platform === "darwin" && !quitting\) \{ e\.preventDefault\(\); hideClosedWindow\(\); \} )?return; \}|if \(what === "allow"\) return;/.test(b), "an allowed close does not go through");
             assert(b.indexOf("mirror.localOnly = true") > prevent && b.indexOf("mirror.localOnly = true") < flush, "the close does not keep uploads local while it saves");
             assert(/if \(forAgents && \(agentMode \|\| local\.clients\.size \|\| windowVisible\(\)\)\) \{[^}]*quitGuard\.reset\(\); return; \}/.test(b), "an agent's quit does not re-check after the save");
             // flushAll: the window's save, then the .scumble saves in flight (docs/PLAN_DOCUMENTS.md §4.5)

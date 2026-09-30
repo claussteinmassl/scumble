@@ -83,7 +83,9 @@ const store = read();
 shell.renderUpdate(before);
 const back = read();
 document.getElementById("shell-settings").close();
-if (JSON.stringify(own.hidden) !== "[false,false,false]") throw new Error("this instance hides its updates: " + JSON.stringify(own));
+// a packaged macOS app is updated by a download ("manual"): it offers no feed to check either
+const ownHidden = before.state === "manual" ? "[true,true,true]" : "[false,false,false]";
+if (JSON.stringify(own.hidden) !== ownHidden) throw new Error("this instance hides its updates: " + JSON.stringify(own));
 if (JSON.stringify(store.hidden) !== "[true,true,true]" || !/Microsoft Store/.test(store.note) || /GitHub/.test(store.note)) throw new Error("the Store copy still offers GitHub updates: " + JSON.stringify(store));
 if (JSON.stringify(back) !== JSON.stringify(own)) throw new Error("the section did not come back: " + JSON.stringify(back) + " against " + JSON.stringify(own));
 return { state: before.state, store: store.note };
