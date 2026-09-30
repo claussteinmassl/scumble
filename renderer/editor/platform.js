@@ -5,8 +5,8 @@
 /** macOS: Cmd does what Ctrl does elsewhere (the key handlers already take either), and Ctrl+click is the context menu. */
 export const IS_MAC = typeof navigator !== "undefined" && /^mac/i.test(String(navigator.platform || ""));
 
-/** Ctrl, or Cmd on a Mac, held during a mouse or drag event. */
-export function cmdKey(e) { return !!(e && (e.ctrlKey || e.metaKey)); }
+/** Ctrl, or Cmd on a Mac, held during a mouse or drag event. Elsewhere the Windows or Super key does not count. */
+export function cmdKey(e) { return !!(e && (e.ctrlKey || (IS_MAC && e.metaKey))); }
 
 /**
  * A text with shortcuts as the user types them: "Ctrl" reads "Cmd" on a Mac ("Ctrl+Z", and "Ctrl keeps it square" for a

@@ -1954,7 +1954,7 @@ class InpaintEditor {
             e.preventDefault(); e.stopPropagation();
             const files = Array.from((e.dataTransfer && e.dataTransfer.files) || []).filter((f) => f.type.startsWith("image/") || TIFF_EXT.test(f.name || ""));
             if (!files.length) return;
-            // no base yet or Ctrl held: (re)load the base; otherwise every file becomes a new image layer
+            // no base yet or Ctrl (Cmd on a Mac) held: (re)load the base; otherwise every file becomes a new image layer
             if (!this.width || cmdKey(e)) this.loadFile(files[0]);
             else this.addImageLayers(files, e.shiftKey ? "reference" : "none", e.shiftKey ? {} : { place: "fit" });
         });
