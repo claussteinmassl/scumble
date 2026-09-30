@@ -2412,6 +2412,19 @@ window.addEventListener("keydown", (e) => {
     if (!e.repeat) canvasOnly();       // Escape gets here only while the view is on, so it only ever leaves
 }, true);
 
+/**
+ * Edit › Select All (the macOS menu, electron/main/main.js): the focused text field's text as the menu's role would, else
+ * the whole picture of the open editor as a selection (the editor has no Cmd+A of its own). A key inside an open dialog
+ * or the question dialog stays text.
+ */
+function selectAllFromMenu() {
+    const t = document.activeElement;
+    const field = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
+    const ed = host.editor;
+    if (field || (t && t.closest && t.closest("dialog[open]")) || !ed || ed.askOpen || !ed.width) { document.execCommand("selectAll"); return; }
+    ed.selectRectangle([0, 0, ed.width, ed.height], "replace");
+}
+
 window.scumble.onMenu((cmd) => {
     if (cmd === "save") host.editor && host.editor.exportImage();
     else if (cmd === "save-document") saveDocumentFromUi(host.editor);
@@ -2421,6 +2434,7 @@ window.scumble.onMenu((cmd) => {
     else if (cmd === "console") openConsole();
     else if (cmd === "help") showColumn(helpOpen, toggleHelp);
     else if (cmd === "canvas-only") canvasOnly();
+    else if (cmd === "select-all") selectAllFromMenu();
     else if (cmd.startsWith("canvas:turn:")) {
         const op = { 1: 1, "-1": -1, 2: 2, h: "h", v: "v" }[cmd.slice(12)];
         if (op !== undefined && host.editor) host.editor.turnDocument(op);

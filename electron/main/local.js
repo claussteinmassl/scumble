@@ -28,7 +28,7 @@ const { EventEmitter } = require("node:events");
 let darwinTmp = null;
 function darwinTmpDir() {
     if (darwinTmp) return darwinTmp;
-    try { darwinTmp = String(execFileSync("/usr/bin/getconf", ["DARWIN_USER_TEMP_DIR"], { encoding: "utf8", timeout: 5000 })).trim(); } catch (_) { /* not a Mac */ }
+    try { darwinTmp = String(execFileSync("/usr/bin/getconf", ["DARWIN_USER_TEMP_DIR"], { encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] })).trim(); } catch (_) { /* not a Mac */ }
     if (!darwinTmp) darwinTmp = os.tmpdir();
     return darwinTmp;
 }

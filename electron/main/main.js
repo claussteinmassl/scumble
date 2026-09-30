@@ -291,7 +291,8 @@ function createWindow() {
         if (agentMode) { e.preventDefault(); win.hide(); headless = true; return; }
         // the window saves its last changes first (quit.js): the edited layers, the selection, the autosave
         const what = quitGuard.onClose();
-        if (what === "allow") return;
+        // macOS: a close let through without a quit (Quit now while it saved) hides the window too
+        if (what === "allow") { if (process.platform === "darwin" && !quitting) { e.preventDefault(); hideClosedWindow(); } return; }
         e.preventDefault();
         if (what === "ask") { askWhileSaving(); return; }
         const forAgents = agentsLeft;       // maybeQuit: the last agent left a headless instance
@@ -299,7 +300,12 @@ function createWindow() {
         quitGuard.run(() => flushAll("quit")).then((r) => {
             if (!r.ok || r.ms > 5000) log.record({ level: r.ok ? "info" : "warn", source: "main", message: r.ok ? `saved before closing in ${(r.ms / 1000).toFixed(1)} s` : `closed without saving everything: ${r.timedOut ? "the window did not finish in time" : r.error || "the window did not answer"}` });
             // an agent that connected, or a window shown by a new start, while it saved: this instance is in use again
-            if (forAgents && (agentMode || local.clients.size || windowVisible())) { agentsLeft = false; mirror.localOnly = false; quitGuard.reset(); return; }
+            // (macOS: the quit this close was part of is off too, so a later close hides the window again)
+            if (forAgents && (agentMode || local.clients.size || windowVisible())) { agentsLeft = false; if (process.platform === "darwin") quitting = false; mirror.localOnly = false; quitGuard.reset(); return; }
+            // macOS: a close without a quit hides the window once it has saved. The app stays (menu bar, Dock), and its
+            // socket and single-instance lock with it, so agents must still find an editor: a destroyed window would
+            // leave every command failing, and no new instance could start. The Dock (activate) shows it again
+            if (process.platform === "darwin" && !quitting) { hideClosedWindow(); return; }
             if (win && !win.isDestroyed()) win.close();
         });
     });
@@ -337,8 +343,8 @@ function createWindow() {
     // the canvas-only view follows the window's full screen: F11 or the OS ending it ends the view too (renderer/shell.js)
     win.on("enter-full-screen", () => send("window:fullScreen", true));
     win.on("leave-full-screen", () => { viewFullScreen = false; send("window:fullScreen", false); });
-    // macOS: a window closed without a quit leaves the app running, and the Dock brings a new one (showWindow). The
-    // close saved and marked the guard done; the new window's close must save again, and its uploads reach ComfyUI
+    // macOS: a window that went without a quit all the same (the page closed itself) leaves the app running, and the
+    // Dock brings a new one (showWindow); the new window's close must save again, and its uploads reach ComfyUI
     if (process.platform === "darwin") win.on("closed", () => { if (!quitting) { mirror.localOnly = false; quitGuard.reset(); } });
     win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: "deny" }; });
     // an unhandled file drop (the shell bar, the tabs, a panel) would navigate the window to the file:
@@ -420,6 +426,19 @@ function askWhileSaving() {
         quitGuard.release();
         if (win && !win.isDestroyed()) win.close();
     }, () => { askingToQuit = false; });
+}
+
+/**
+ * macOS: the user's close of the window, saved (the close handler), hides it instead; the next close saves again. A
+ * full-screen window leaves full screen first, or its Space would stay behind empty.
+ */
+function hideClosedWindow() {
+    mirror.localOnly = false;
+    quitGuard.reset();
+    if (!win || win.isDestroyed()) return;
+    headless = true;
+    if (win.isFullScreen()) { win.once("leave-full-screen", () => { if (headless && !win.isDestroyed()) win.hide(); }); win.setFullScreen(false); return; }
+    win.hide();
 }
 
 function showWindow() {
@@ -563,8 +582,10 @@ function buildMenu() {
         // Cmd key to the page before the menu (RenderWidgetHostViewCocoa performKeyEquivalent) and passes it on to the
         // menu only when the page left it unhandled. So on the canvas the editor keeps Cmd+Z / Shift+Z / C / V / X
         // (inpaint_canvas.js onKey calls preventDefault: layer undo, pixel copy and paste, no second paste event from
-        // the role), and in a text field, where the editor lets the key go, the role does the text action
-        ...(isMac ? [{ label: "Edit", submenu: [{ role: "undo" }, { role: "redo" }, { type: "separator" }, { role: "cut" }, { role: "copy" }, { role: "paste" }, { role: "selectAll" }] }] : []),
+        // the role), and in a text field, where the editor lets the key go, the role does the text action. The editor
+        // has no Cmd+A of its own, so Select All is the shell's (renderer/shell.js selectAllFromMenu): the text of the
+        // focused field, else the whole picture as a selection, where the role would select the page's text
+        ...(isMac ? [{ label: "Edit", submenu: [{ role: "undo" }, { role: "redo" }, { type: "separator" }, { role: "cut" }, { role: "copy" }, { role: "paste" }, { label: "Select All", accelerator: "CmdOrCtrl+A", click: () => send("menu", "select-all") }] }] : []),
         {
             label: "&File",
             submenu: [
@@ -1210,6 +1231,16 @@ async function agentMain() {
     }
     // --mcp: serve stdio; the app (own or remote) is started right away so the first tool call is quick
     agentMode = "mcp";
+    // macOS: a .scumble opened from Finder while this agent process runs may be handed to it (the same app bundle):
+    // an own instance opens it like the normal start (after the session, window shown), a proxy passes it on to
+    // the instance it talks to
+    app.on("open-file", (e, file) => {
+        e.preventDefault();
+        if (backend.own) {
+            try { openDocumentArgs([file], path.dirname(file)); } catch (err) { console.warn("open-file:", err.message); }
+            if (app.isReady() && win) showWindow();
+        } else backend.run("open_document", { path: file }).catch((err) => console.warn("open-file:", err.message));
+    });
     const mcp = require("./mcp/server");
     await mcp.serve(backend, {
         version: app.getVersion(),

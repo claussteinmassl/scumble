@@ -159,7 +159,9 @@ MCP client ──stdio──> Scumble --mcp (electron/main/mcp/server.js)
   error texts are what they were, and that was proven byte for byte when `createServer` was split
   out of `serve()`.
 - **`electron/main/local.js`**: the command socket every running instance opens:
-  `\\.\pipe\scumble-<hash of userData>` on Windows, `<userData>/scumble.sock` elsewhere.
+  `\\.\pipe\scumble-<hash of userData>` on Windows, `<user temp folder>/scumble-<hash of userData>.sock` on
+  macOS (`getconf DARWIN_USER_TEMP_DIR`, the same as `$TMPDIR`: a socket path has 104 bytes there, and a profile
+  under a synced folder is longer), `<userData>/scumble.sock` on Linux.
   Newline-delimited JSON, `{id, cmd: run|describe|ping, name, args}` → `{id, ok,
   result|error}`, plus `{event: "commands"}` when the table changes. Local machine only, no
   authentication: the same trust as the DevTools port and the node's loopback route.
