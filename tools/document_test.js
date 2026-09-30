@@ -126,8 +126,10 @@ async function localFacts(file) {
 }
 
 function python(code, ...args) {
-    const r = spawnSync("python", ["-c", code, ...args], { encoding: "utf8" });
-    if (r.status !== 0) throw new Error("python: " + (r.stderr || r.stdout).slice(-600));
+    // Windows has `python`; macOS and Linux ship `python3` only (PYTHON overrides both)
+    const r = spawnSync(process.env.PYTHON || (process.platform === "win32" ? "python" : "python3"), ["-c", code, ...args], { encoding: "utf8" });
+    if (r.error) throw new Error("python: " + r.error.message);
+    if (r.status !== 0) throw new Error("python: " + (r.stderr || r.stdout || "").slice(-600));
     return r.stdout.trim();
 }
 const PY_READ = [
@@ -406,13 +408,16 @@ function listTree(dir) {
             const first = slow.write({ reqId: "a", path: target, document: f.document, plugins: f.plugins });
             await new Promise((res) => setTimeout(res, 50));
             let second = null;
-            try { await slow.write({ reqId: "b", path: target.toUpperCase(), document: f.document, plugins: f.plugins }); } catch (e) { second = e.message; }
+            // a spelling every platform takes for the same path: the case on Windows (as before), a "/./" segment elsewhere
+            // (Linux keeps case apart; a job that is not refused would wait for the gate below forever)
+            const respelt = process.platform === "win32" ? target.toUpperCase() : scratch + path.sep + "." + path.sep + "svc2.scumble";
+            try { await slow.write({ reqId: "b", path: respelt, document: f.document, plugins: f.plugins }); } catch (e) { second = e.message; }
             const idle = slow.idle();
             release();
             await first; await idle;
-            if (process.platform === "win32") assert(second && /already being saved/.test(second), "a second job on the path: " + second);
+            assert(second && /already being saved/.test(second), "a second job on the path: " + second);
             assert(!slow.busy, "idle() resolved while a job ran");
-            return "missing mask refused; second job: " + (second || "(case-sensitive platform)");
+            return "missing mask refused; second job: " + second;
         });
         await check("the_service_cancel_leaves_the_target_and_cleans_the_selection_fields", async () => {
             const M = mirror("S4");

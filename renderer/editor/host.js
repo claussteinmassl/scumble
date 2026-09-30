@@ -64,10 +64,16 @@ function hashString(s) {
 
 function fmtMB(n) { return n >= 1073741824 ? (n / 1073741824).toFixed(2) + " GB" : n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB"; }
 
-/** A path as documents are compared (main's pathKey): separators unified; Windows paths case-folded. */
+/**
+ * A path as documents are compared (main's pathKey): separators unified; Windows paths case-folded, and on macOS every
+ * path, as APFS's default volume ignores case (a case-sensitive one is rare, and folding there only takes two files
+ * that differ in case for one document).
+ */
+const ON_MAC = typeof navigator !== "undefined" && /^mac/i.test(String(navigator.platform || ""));
 function normPath(p) {
     const s = String(p || "").replace(/\//g, "\\");
-    return /^[a-z]:\\|^\\\\/i.test(s) ? s.toLowerCase() : String(p || "");
+    if (/^[a-z]:\\|^\\\\/i.test(s)) return s.toLowerCase();
+    return ON_MAC ? String(p || "").toLowerCase() : String(p || "");
 }
 
 /**

@@ -13,10 +13,14 @@ const docfile = require("./docfile");
 const EXT = ".scumble";
 const DATA_PNG = /^data:image\/png;base64,/;
 
-/** The key a path is locked and compared under: resolved, case-folded on Windows. */
+/**
+ * The key a path is locked and compared under: resolved, case-folded on Windows and macOS, whose default volumes
+ * (NTFS, APFS) take /x/A.scumble and /x/a.scumble for one file. A case-sensitive APFS volume is rare, and folding there
+ * only makes two such files share one lock (the second save waits its turn), never mixes their contents.
+ */
 function pathKey(p) {
     const r = path.resolve(String(p));
-    return process.platform === "win32" ? r.toLowerCase() : r;
+    return process.platform === "win32" || process.platform === "darwin" ? r.toLowerCase() : r;
 }
 
 function isDocumentPath(p) {
