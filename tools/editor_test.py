@@ -3167,7 +3167,14 @@ const paint = document.createElement("canvas"); paint.width = W; paint.height = 
     for (let i = 0; i < 40; i++) { x.fillStyle = `hsl(${(i * 53) % 360},80%,55%)`; x.fillRect((i * 211) % W, (i * 149) % H, 120, 120); }
 }
 const L = ed.addLayer({ name: "Paint", kind: "paint", px: ed.pixels.Layer.fromCanvas(paint), x: 0, y: 0, w: W, h: H, dirty: true });
-ed.renderLayers(); ed.fitView(); ed.draw();
+ed.renderLayers(); ed.fitView();
+// The step needs the screen at level 0 (scale >= 0.5), where it asks the mips worker for nothing. At fit that holds
+// on a large canvas (the Windows machine's), and nothing changes there. On a small display (1222 x 734 device px at
+// 3000 x 2000 fits at 0.34, level 1) the screen builds its own chains within 5 ms of a flip and the reads below
+// would find every chain already built: that view is put at 1:1, which is level 0 whatever the window's size.
+if (ed.tileLevel(ed.view.scale) !== 0) { ed.view = { scale: 1, x: 0, y: 0, angle: 0 }; ed._fitted = false; }
+if (ed.tileLevel(ed.view.scale) !== 0) throw new Error("the step needs the screen at level 0, it is at " + ed.tileLevel(ed.view.scale) + " (canvas " + ed.canvas.width + " x " + ed.canvas.height + ")");
+ed.draw();
 await ed.mipsSettled();
 
 const scale = 192 / W;                       // the film panel's picture: level 3 here
@@ -6039,7 +6046,11 @@ wrap.style.cssText = "position:fixed;right:10px;bottom:10px;width:320px;height:2
 document.body.appendChild(wrap);
 const home = ed.thumb.parentElement;
 wrap.appendChild(ed.thumb);
-const W = 2400, H = 1600;
+// At fit the screen has to be level 0 (scale >= 0.5): 2400 x 1600 needs a canvas of 1248 x 848 device px. On a
+// smaller one (a 1600 x 1000 display gives 1222 x 734) a 2000 x 1300 picture is used, which fits at level 0 from
+// 1100 x 700 and is still level 2 in the navigator (320 x 240). A canvas that large keeps 2400 x 1600 as it was.
+const fitsBig = Math.min((ed.canvas.width - 48) / 2400, (ed.canvas.height - 48) / 1600) >= 0.5;
+const W = fitsBig ? 2400 : 2000, H = fitsBig ? 1600 : 1300;
 const c = document.createElement("canvas"); c.width = W; c.height = H;
 {
     const x = c.getContext("2d");

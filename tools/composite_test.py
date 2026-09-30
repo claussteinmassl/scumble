@@ -26,6 +26,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cdp import session  # noqa: E402
 
 REFS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "refs")
+# The references are pictures of one platform's fonts (the text layer is system-ui: Segoe UI, SF Pro) and of its
+# Skia gradient rounding (1-4 levels): macOS has its own set, taken with --update on a known-good build. Windows
+# keeps the files it always had.
+REF_SUFFIX = ".darwin" if sys.platform == "darwin" else ""
 OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "dist", "composite")
 
 # One deterministic document, rendered two ways. Everything is drawn from fixed numbers:
@@ -484,7 +488,13 @@ def compare(a_png, b_png):
     a = Image.open(io.BytesIO(a_png)).convert("RGBA")
     b = Image.open(io.BytesIO(b_png)).convert("RGBA")
     if a.size != b.size:
-        return {"size": (a.size, b.size), "max": 255, "mean": 255.0, "differing": -1}
+        # The view is cropped to the canvas. A screen smaller than the reference's (a 1000 pt Mac display gives a canvas
+        # 734 px tall) is compared where both are, with the same tolerance, as long as that holds the whole document
+        # (40..940 x 30..630). Off macOS a different size stays a failure, as it was.
+        w, h = min(a.width, b.width), min(a.height, b.height)
+        if sys.platform != "darwin" or a.width != b.width or w < 960 or h < 650:
+            return {"size": (a.size, b.size), "max": 255, "mean": 255.0, "differing": -1}
+        a, b = a.crop((0, 0, w, h)), b.crop((0, 0, w, h))
     da, db = a.tobytes(), b.tobytes()
     worst = 0
     total = 0
@@ -511,7 +521,7 @@ async def run(c, args):
             cur = os.path.join(OUT, f"{name}.png")
             with open(cur, "wb") as f:
                 f.write(data)
-            ref = os.path.join(REFS, f"composite_{name}.png")
+            ref = os.path.join(REFS, f"composite_{name}{REF_SUFFIX}.png")
             if args.update or not os.path.exists(ref):
                 with open(ref, "wb") as f:
                     f.write(data)

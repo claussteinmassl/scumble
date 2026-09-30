@@ -274,7 +274,14 @@ const padded = mean9(doc.flatten({ box: [1499, 1119, 1502, 1122], below: r.layer
 out.vignette = { got: r2.point.color, want: want2, padded, flats };
 if (Math.abs(padded[0] - want2[0]) > 0.005) throw new Error("the vignette's picture in a box is not the whole picture's under the point " + JSON.stringify(out.vignette));
 if (flats) throw new Error("a point under a vignette flattened the whole picture " + flats + " times: a box has been enough since E3");
-if (!r2.point.color.every((v, k) => Math.abs(v - want2[k]) < 1e-6)) throw new Error("the point under a vignette took " + JSON.stringify(r2.point.color) + ", the picture below the points layer is " + JSON.stringify(want2));
+// the point takes the box read of the picture below it, exactly
+const boxed = mean9(doc.flatten({ box: [1499, 1119, 1502, 1122], below: r.layer, exact: true }), 0, 0);
+if (!r2.point.color.every((v, k) => Math.abs(v - boxed[k]) < 1e-6)) throw new Error("the point under a vignette took " + JSON.stringify(r2.point.color) + ", its box read is " + JSON.stringify(boxed));
+// and that box is the whole flatten's: exact on Windows; elsewhere Skia rounds a radial gradient (the vignette) by a
+// level depending on the canvas's size and offset (measured on macOS / ANGLE Metal: 3 of 36 bytes, at the origin 0),
+// so a 3 x 3 mean may move by up to 1/255
+const tol2 = navigator.userAgent.includes("Windows") ? 1e-6 : 1 / 255 + 1e-6;
+if (!r2.point.color.every((v, k) => Math.abs(v - want2[k]) <= tol2)) throw new Error("the point under a vignette took " + JSON.stringify(r2.point.color) + ", the picture below the points layer is " + JSON.stringify(want2));
 await c("close_document", { doc: d.id, force: true });
 await c("activate_document", { doc: window.__filmDoc });
 return out;
