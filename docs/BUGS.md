@@ -421,6 +421,18 @@ the gates that need no ComfyUI and no key ran on both backends. What that machin
   by hand.
 - **macOS: opening a file into an instance started by MCP.** The `open-file` handler is registered in that process
   too, but the case was not exercised.
+- **macOS: no gate covers the close, the hide and the quit.** The `quit` gate's app steps and the `document` gate's
+  step 8 (`a_close_waits_for_the_save`) end an instance with WM_CLOSE, which only Windows has; off Windows they are
+  skipped (the `quit` gate still reads PASS on its plain-Node part), and `document` ends its instances with SIGTERM.
+  The macOS path in `electron/main/main.js` (a close saves, then hides the window through `hideClosedWindow`; Cmd+Q
+  saves and quits) is checked by `tools/quit_test.js` against the source only, never in a running app.
+- **macOS: "Quit now" during a close's save only hides the window.** A second close while the first one saves asks
+  "Keep waiting" or "Quit now" (`askWhileSaving`). On a Mac, Quit now stops the save as the dialog says (the last
+  seconds are lost), but the app does not quit: the window hides and the app stays in the Dock, as a close without
+  a quit does there. The button's name is wrong on a Mac; what happens to the data is as stated.
+- **macOS: a stale "Saving ... before closing" status after the window comes back.** The status line the save before
+  a close writes ("Saving the edited layers before closing...") is not cleared when the window hides, so a window
+  shown again from the Dock can still show it although the save ended.
 - **macOS: the updater is off** (`manual`), by decision: no release carries `latest-mac.yml` yet. Not a bug; listed so
   it is not mistaken for one.
 
