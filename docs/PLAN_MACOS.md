@@ -91,7 +91,7 @@ secrets are set.
 
 ## Results
 
-Written 2026-09-30, after the work. Everything in the repository was done as planned; the differences and findings:
+Written 2026-09-30, after the work. Everything in the repository was done; the differences and findings:
 
 - **Baseline on the unmodified app** (Apple Silicon, `--offline`): of the gates that need no ComfyUI and no key, four
   failed on the Mac before any change - `editor` (tiles on), `composite`, `platform` and `film` - and `mcp` and

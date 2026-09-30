@@ -82,7 +82,7 @@ in the workflow). **With them**, it signs and notarizes, and on a `v<version>` t
 and `latest-mac.yml` to the draft release the `draft` job made. The Windows and Linux jobs do not depend on any of this.
 
 **Updates.** The macOS app does not update itself: the updater is off there and Settings › Updates says that new
-versions are downloaded from GitHub Releases. `latest-mac.yml` is published with the release, so turning the updater
+versions are downloaded from GitHub Releases. `latest-mac.yml` is published only by signed tag builds, so turning the updater
 on later is a change in `electron/main/updater.js`, not in the release.
 
 ## Roles
@@ -93,8 +93,10 @@ on later is a change in `electron/main/updater.js`, not in the release.
 | Approvers | [DenRakEiw](https://github.com/DenRakEiw) |
 
 Contributions from outside the team arrive as pull requests and are reviewed and merged by a
-committer. Every release is approved for signing by hand by an approver; nothing is signed
-automatically.
+committer. Every Windows release is approved for signing by hand by an approver; nothing in
+the Windows build is signed automatically. The macOS build has no approval step of its own: when
+the maintainer pushes a `v<version>` tag and has put the Apple secrets into the repository, the
+`macos` job signs and notarizes with the maintainer's certificate, so the tag push is the approval.
 
 ## How a release is built
 
@@ -134,7 +136,7 @@ In detail, Scumble talks to these systems, and to nothing else:
   an answer carries a download link instead of the image, Scumble fetches that link, without the key
   ([RECIPES.md, "BytePlus ModelArk"](RECIPES.md#byteplus-modelark-ark)).
 - **Hugging Face**, when you click *Download* for a helper model in Settings › Helpers.
-- **GitHub Releases**, for the update check (not on macOS, where the updater is off): the packaged app checks for a new version once,
+- **GitHub Releases**, for the update check (off on macOS): the packaged app checks for a new version once,
   8 seconds after start, and downloads it in the background when one exists. This check can
   be switched off in Settings › Updates (*Check for updates at start*); *Check now* and
   *Restart and install* only run when you click them. The Microsoft Store copy never asks

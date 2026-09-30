@@ -184,8 +184,9 @@ npm run dist:mac
 ```
 
 This writes `dist/Scumble-<version>-arm64.dmg` and `.zip`. With a Developer ID Application certificate in your
-keychain electron-builder signs with it; without one the result is not fit to hand on. The code signing policy says
-how signing and notarization are set up.
+keychain electron-builder signs with it (with auto-discovery on, it uses any other valid signing identity it finds, with
+a warning). Without a certificate the build is unsigned and not notarized, and Gatekeeper blocks it on any other Mac.
+The code signing policy says how signing and notarization are set up.
 
 On macOS the app stays running when its window is closed (the Dock icon reopens it; Cmd+Q quits), opens `.scumble`
 files from Finder, and reads Cmd wherever Windows and Linux read Ctrl. It does not update itself: Settings > Updates
@@ -215,8 +216,8 @@ npm start
 ```
 
 Build the installer with `npm run dist` (`dist/Scumble Setup <version>.exe`, NSIS,
-unsigned); on a Mac `npm run dist:mac` builds the arm64 dmg and zip. Releases are built by GitHub Actions: pushing a tag `v<version>` that matches
-`package.json` publishes a draft release with the installer, its blockmap and `latest.yml`
+unsigned); on a Mac `npm run dist:mac` builds the arm64 dmg and zip. Releases are built by
+GitHub Actions: pushing a tag `v<version>` that matches `package.json` publishes a draft release with the installer, its blockmap and `latest.yml`
 (the auto-update feed); publishing the draft makes it visible to the app. The Rust pixel
 kernels are committed as `renderer/editor/px/px.wasm`; `python tools/build_px.py` rebuilds
 them.
