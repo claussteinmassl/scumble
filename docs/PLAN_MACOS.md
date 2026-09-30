@@ -10,9 +10,9 @@ secrets are set.
 
 - Scope: all of B3 (config, darwin code paths, CI job, docs) plus a local build that runs and passes the gates here.
 - Signing: Developer ID Application + notarization for the local release build. The identity and the notary profile
-  live in this Mac's keychain (`xcrun notarytool` profile `scumble-notary`) and never enter the repository.
+  live in this Mac's keychain (an `xcrun notarytool` profile) and never enter the repository.
 - Architecture: **arm64 only** (Apple Silicon; the ONNX runtime ships `darwin/arm64`).
-- Git: branch `macos-build` on the fork `claussteinmassl/scumble`, a commit per step, pushed; at the end a pull
+- Git: branch `macos-build` on a fork, a commit per step, pushed; at the end a pull
   request to `DenRakEiw/scumble` on the user's word.
 - **Windows and Linux must not change behaviour.** Every change to shared code is either behind
   `process.platform === "darwin"` or provably inert on the other platforms (e.g. `e.ctrlKey || e.metaKey`, the
@@ -69,7 +69,7 @@ secrets are set.
 ### 6. Docs
 - `docs/CODE_SIGNING_POLICY.md` and `docs/RELEASING.md`: the macOS paragraph (Developer ID, notarization, the secrets).
 - `README.md`: Install (macOS).
-- `docs/BUGS.md`: what was not checked (Intel Macs, the CoreML provider's speed, the Store flows).
+- `docs/BUGS.md`: what was not checked (Intel Macs, the CoreML provider's speed, Retina, the manual's Ctrl wording, real input).
 - `CHANGELOG.md`: nothing (a release is the maintainer's word; the PR says what to add).
 
 ## How it is checked
@@ -88,3 +88,28 @@ secrets are set.
 
 ## Not in scope
 - An Intel or universal build, the Mac App Store, a GitHub release of the fork, the updater on macOS.
+
+## Results
+
+Written 2026-09-30, after the work. Everything in the repository was done as planned; the differences and findings:
+
+- **Baseline on the unmodified app** (Apple Silicon, `--offline`): of the gates that need no ComfyUI and no key, four
+  failed on the Mac before any change - `editor` (tiles on), `composite`, `platform` and `film` - and `mcp` and
+  `assistant` failed on the long gate-profile path. None was an app bug. `editor` and `composite` were a small display
+  (1600x1000 at 1x, so the view sits below the zoom the test expects), the system font and Windows-made references;
+  `film` was a one-level gradient rounding; `platform` was a relative launcher path across macOS's `/var` symlink; `mcp`
+  and `assistant` hit the 104-byte unix socket limit, which is why the socket now lives in the per-user temp directory.
+  The test tools were changed for all of these (darwin reference pictures `tools/refs/*.darwin.png`, a tolerance that
+  applies off Windows only); the Windows checks stay as strict as before.
+- **The socket** is in `DARWIN_USER_TEMP_DIR` (`getconf`), not `os.tmpdir()` as planned: the latter can point below
+  `/private/var` and still be too long for a gate's profile.
+- **Closing the window** hides it instead of destroying it, so an agent started over MCP keeps an editor to drive; the
+  plan said only "the app stays alive".
+- **Paths fold case on macOS** like on Windows (APFS is case-insensitive by default); not in the plan, found when
+  `document_test.js` ended silently off Windows.
+- **Select All** is the shell's own item in the Edit menu (`selectAllFromMenu`): the text in a field, the picture on the canvas.
+- **The helpers for Cmd** live in `renderer/editor/platform.js` (copied into the ComfyUI node by `tools/build_node.py`),
+  because `host.js` needs them and the node has its own `host.js`. Labels are rewritten by `keyText`, which turns the
+  word "Ctrl" into "Cmd" on darwin, not only "Ctrl+".
+- **Not done or not checked** is in `docs/BUGS.md`, "macOS: built and run, with gaps".
+

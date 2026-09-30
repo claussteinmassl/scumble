@@ -402,6 +402,28 @@ named.
   402 / 429, a 403 / 404 that names no image, or a server that cannot be reached costs one request.
   `tools/llm_images_test.js`.
 
+### macOS: built and run, with gaps (B3, 2026-09-30)
+
+**Written** 2026-09-30 with the macOS build (`docs/PLAN_MACOS.md`). Built and run on one Apple Silicon Mac (macOS 26.2);
+the gates that need no ComfyUI and no key ran on both backends. What that machine could not show:
+
+- **macOS: Intel Macs.** There is no x64 build: the ONNX runtime's binary in the package is `darwin/arm64`, so an
+  Intel build would have no helper models. The `mac` block of `package.json` lists arm64 only.
+- **macOS: the CoreML provider's speed.** The helper models (SAM2, background removal) start, but no one has
+  measured whether ONNX Runtime's CoreML provider is used or how fast it is against the CPU fallback.
+- **macOS: Retina displays.** The darwin composite references (`tools/refs/composite_*.darwin.png`) were made on a
+  1600x1000 display at 1x and are tied to a canvas 1222 px wide; on another display or scale the `composite` gate
+  compares against the wrong picture. Nothing has looked at the tile atlas at 2x.
+- **macOS: the manual still says Ctrl.** The app's labels read Cmd there (`renderer/editor/platform.js`), but
+  `docs/MANUAL.md`, which ships inside the app, was not reworded.
+- **macOS: real input was not used.** Keys, clicks and drags were dispatched through the DevTools protocol; a locked
+  screen kept real keyboard and mouse input out of reach. Cmd+click, Cmd+drag and the Cmd shortcuts have not been tried
+  by hand.
+- **macOS: opening a file into an instance started by MCP.** The `open-file` handler is registered in that process
+  too, but the case was not exercised.
+- **macOS: the updater is off** (`manual`), by decision: no release carries `latest-mac.yml` yet. Not a bug; listed so
+  it is not mistaken for one.
+
 ### Linux: built, never run (B2, 2026-09-22)
 
 **Written** 2026-09-22 with the Linux job of `.github/workflows/build.yml` (AppImage and .deb, `latest-linux.yml`).

@@ -30,7 +30,7 @@ run inside the app through ONNX Runtime (SAM2, BiRefNet, RMBG). The editor is th
 code as the ComfyUI node [Inpaint Canvas](https://github.com/DenRakEiw/ComfyUI-InpaintCanvas);
 Scumble is the standalone window around it, plus recipes, plugins, an MCP server and the assistant.
 
-Windows first (from the [Microsoft Store](https://apps.microsoft.com/detail/9NDBTNNMXF2R) or the installer below), a Linux build (AppImage, .deb) that has not been tried on Linux yet, macOS is planned. Free software, GPL-3.0.
+Windows first (from the [Microsoft Store](https://apps.microsoft.com/detail/9NDBTNNMXF2R) or the installer below), a Linux build (AppImage, .deb) that has not been tried on Linux yet, and a macOS build for Apple Silicon (below). Free software, GPL-3.0.
 What has been verified so far: local rendering through ComfyUI, the in-app helper models,
 the film pack, the command core, the MCP server, the tile engine on large documents and
 auto-update; the API providers and the assistant's model calls are untested against the live
@@ -168,6 +168,30 @@ the sandbox helper properly. The
 helper models (SAM2, background removal) run on the CPU on Linux. API keys go into the desktop's keyring (GNOME
 Keyring, KWallet); without one Settings › API providers says the keys are only obfuscated.
 
+## Install (macOS)
+
+Apple Silicon only (arm64); there is no Intel build, because the helper models' ONNX binary is arm64. Once the
+maintainer ships a macOS build, `Scumble-<version>-arm64.dmg` (and the same app as a `.zip`) is on the
+[latest release](https://github.com/DenRakEiw/scumble/releases/latest): open the dmg and drag Scumble to Applications.
+A build that is not signed and notarized is blocked by Gatekeeper, so the maintainer's dmg is meant to be both
+(see the [code signing policy](docs/CODE_SIGNING_POLICY.md)).
+
+To build it yourself on an Apple Silicon Mac:
+
+```
+npm ci
+npm run dist:mac
+```
+
+This writes `dist/Scumble-<version>-arm64.dmg` and `.zip`. With a Developer ID Application certificate in your
+keychain electron-builder signs with it; without one the result is not fit to hand on. The code signing policy says
+how signing and notarization are set up.
+
+On macOS the app stays running when its window is closed (the Dock icon reopens it; Cmd+Q quits), opens `.scumble`
+files from Finder, and reads Cmd wherever Windows and Linux read Ctrl. It does not update itself: Settings > Updates
+says that new versions are downloaded from GitHub Releases. What has not been checked on a Mac is in
+[BUGS.md](docs/BUGS.md) ("macOS: built and run, with gaps").
+
 ## First steps
 
 Type the ComfyUI URL in the top bar (default `http://127.0.0.1:8188`), Connect, open an
@@ -191,7 +215,7 @@ npm start
 ```
 
 Build the installer with `npm run dist` (`dist/Scumble Setup <version>.exe`, NSIS,
-unsigned). Releases are built by GitHub Actions: pushing a tag `v<version>` that matches
+unsigned); on a Mac `npm run dist:mac` builds the arm64 dmg and zip. Releases are built by GitHub Actions: pushing a tag `v<version>` that matches
 `package.json` publishes a draft release with the installer, its blockmap and `latest.yml`
 (the auto-update feed); publishing the draft makes it visible to the app. The Rust pixel
 kernels are committed as `renderer/editor/px/px.wasm`; `python tools/build_px.py` rebuilds

@@ -13,6 +13,18 @@ blog post (the last section here; `time` is the release's `published_at` in Germ
 Before the tag: the exe gates `--offline` on both backends against `dist/win-unpacked/Scumble.exe`, each on its own
 profile (`bash tools/run_gates.sh <label> --offline --exe dist/win-unpacked/Scumble.exe --tiles on|off <gates>`).
 
+**The macOS build** rides the same tag: the `macos` job builds `Scumble-<version>-arm64.dmg` and `.zip` and
+`latest-mac.yml`, and attaches them to the draft release only when the repository has the five Apple secrets
+(`CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`; the job's `HAS_SIGNING`
+tests `CSC_LINK` and `APPLE_ID`). Without them a tag build leaves an unsigned workflow artifact and the release has no
+mac files, because Gatekeeper blocks an unsigned download. The secrets and the local route (`npm run dist:mac` with a
+Developer ID Application certificate in the keychain and `APPLE_KEYCHAIN_PROFILE`) are in
+`docs/CODE_SIGNING_POLICY.md`; a mac build made locally can be checked with `spctl -a -vv -t exec` and
+`xcrun stapler validate`, and gated with
+`bash tools/run_gates.sh <label> --offline --exe dist/mac-arm64/Scumble.app --tiles on|off <gates>` (needs
+`gtimeout` from coreutils when there is no `timeout`). The macOS app does not update itself (the updater is off),
+so the release notes are all a Mac user sees of a new version.
+
 ## The release channel, signing and the Store
 
 - Release channel: **GitHub Releases** of `DenRakEiw/scumble` (public since 2026-09-09).

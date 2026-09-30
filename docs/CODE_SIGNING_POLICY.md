@@ -48,6 +48,43 @@ What the MSIX build has to get right (built on 2026-09-23 and checked without an
 - **The licence is not an obstacle.** GPL-3.0 apps are in the Store (VLC, Krita); the
   publisher supplies their own licence terms, and the source is public either way.
 
+## macOS
+
+The macOS build (`Scumble-<version>-arm64.dmg` and `.zip`, Apple Silicon only) is built by the `macos` job of
+`.github/workflows/build.yml` on a GitHub-hosted `macos-latest` runner, or locally with `npm run dist:mac`. The
+`build.mac` block of `package.json` sets the targets (dmg and zip, arm64), the hardened runtime and
+`build/entitlements.mac.plist` (JIT and unsigned executable memory, which Electron needs). Gatekeeper blocks a
+download that is not signed with a Developer ID Application certificate and notarized by Apple, so a macOS build
+meant for other people has to be both. This has nothing to do with the SignPath Foundation, which signs Windows
+binaries.
+
+**Locally.** electron-builder signs with a "Developer ID Application" identity from the keychain. It notarizes when
+`APPLE_KEYCHAIN_PROFILE` names a profile made with `xcrun notarytool store-credentials`, or when `APPLE_ID`,
+`APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID` are set. The first time, `codesign` may ask for access to the
+certificate's key in the keychain; answer *Always Allow* once. Check the result with
+`codesign --verify --deep --strict dist/mac-arm64/Scumble.app`,
+`spctl -a -vv -t exec dist/mac-arm64/Scumble.app` and `xcrun stapler validate` on the dmg.
+
+**In CI.** The job needs five repository secrets:
+
+| Secret | What it holds |
+| --- | --- |
+| `CSC_LINK` | the Developer ID Application certificate with its private key, as a `.p12` file, base64-encoded |
+| `CSC_KEY_PASSWORD` | the password of that `.p12` |
+| `APPLE_ID` | the Apple ID used for notarization |
+| `APPLE_APP_SPECIFIC_PASSWORD` | an app-specific password of that Apple ID |
+| `APPLE_TEAM_ID` | the Apple Developer team ID |
+
+**Without the secrets** (forks, pull requests, a repository that has no Apple account) the job builds an **unsigned**
+dmg and zip with `CSC_IDENTITY_AUTO_DISCOVERY=false` and keeps them as the workflow artifact `Scumble-macos`; nothing is
+attached to a release. The job treats the secrets as present when `CSC_LINK` and `APPLE_ID` are both set (`HAS_SIGNING`
+in the workflow). **With them**, it signs and notarizes, and on a `v<version>` tag it also publishes the dmg, the zip
+and `latest-mac.yml` to the draft release the `draft` job made. The Windows and Linux jobs do not depend on any of this.
+
+**Updates.** The macOS app does not update itself: the updater is off there and Settings › Updates says that new
+versions are downloaded from GitHub Releases. `latest-mac.yml` is published with the release, so turning the updater
+on later is a change in `electron/main/updater.js`, not in the release.
+
 ## Roles
 
 | Role | Who |
@@ -97,7 +134,7 @@ In detail, Scumble talks to these systems, and to nothing else:
   an answer carries a download link instead of the image, Scumble fetches that link, without the key
   ([RECIPES.md, "BytePlus ModelArk"](RECIPES.md#byteplus-modelark-ark)).
 - **Hugging Face**, when you click *Download* for a helper model in Settings › Helpers.
-- **GitHub Releases**, for the update check: the packaged app checks for a new version once,
+- **GitHub Releases**, for the update check (not on macOS, where the updater is off): the packaged app checks for a new version once,
   8 seconds after start, and downloads it in the background when one exists. This check can
   be switched off in Settings › Updates (*Check for updates at start*); *Check now* and
   *Restart and install* only run when you click them. The Microsoft Store copy never asks
