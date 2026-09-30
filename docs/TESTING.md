@@ -50,7 +50,9 @@ Test with real runs: start `./node_modules/.bin/electron . --remote-debugging-po
   the tool uses (`brushSource("all").bytes`), as the move step's case 15 does.
   `node tools/helpers_test.js` runs the ONNX modules without Electron (LaMa in its own process too); it needs the
   model files, a missing one is skipped. `node tools/remove_test.js` checks the Remove tool's crop and resampling
-  (`renderer/editor/inpaint_remove.js`) without models. `node tools/liquify_test.js` holds Liquify's kernel
+  (`renderer/editor/inpaint_remove.js`) without models. `node tools/platform_keys_test.js` (run by the `platform`
+  gate) pins `renderer/editor/platform.js` on a Mac and off one: Cmd counts as Ctrl and labels read Cmd on a Mac
+  only. `node tools/liquify_test.js` holds Liquify's kernel
   (`renderer/editor/inpaint_liquify.js`) to 23b's resampler on constant fields, to a direct integer reference on random
   ones, the bounded gather's split to the unsplit bytes, and the brushes to their rules (advected, restore exact, no fold).
   `python tools/composite_test.py` compares the GPU compositor against Canvas 2D and two

@@ -102,7 +102,8 @@ check("the_store_alias_is_read_on_windows_only", () => {
 check("the_store_launch_code_loads_the_launcher_from_the_resources", () => {
     // what the alias runs, in Node mode: the code finds <resources>/app.asar/.../launch.js, which is given no
     // arguments and so starts the app with its default, --mcp
-    const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "scumble-store-")))   // realpath: macOS tmp is a symlink;
+    // realpath: the macOS temp directory is reached through a symlink
+    const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "scumble-store-")));
     try {
         const at = path.join(dir, "app.asar", "electron", "main", "mcp");
         fs.mkdirSync(at, { recursive: true });

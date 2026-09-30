@@ -774,7 +774,7 @@ class App:
             self.session = None
 
     async def close(self, timeout=180):
-        """WM_CLOSE, as the close button sends it, and the wait for the process to end. (Not on Windows: there is no
+        """WM_CLOSE, as the close button sends it, and the wait for the process to end. (Off Windows: there is no
         close event to send, so this only ends the instance with SIGTERM; the steps that test the close are skipped.)"""
         t0 = time.time()
         if os.name != "nt":

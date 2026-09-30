@@ -27,8 +27,9 @@
 # (tools/assistant_test.py) runs tools/assistant_test.js in plain Node first, then the in-app assistant against
 # tools/assistant_mock.py (every model family through the mock, the asks, the pin, the user-activity wait); it needs
 # no key, refuses a profile that holds one, refuses an instance connected to ComfyUI, and goes last in a list.
-# Gate "platform" (tools/platform_test.py) runs tools/platform_test.js in plain Node first (the MCP registration of
-# every platform, the files each installer leaves out), then the API keys note in the app.
+# Gate "platform" (tools/platform_test.py) runs tools/platform_test.js and tools/platform_keys_test.js in plain Node
+# first (the MCP registration of every platform, the files each installer leaves out, Cmd for Ctrl on a Mac only),
+# then the API keys note in the app.
 # Gate "document" (tools/document_test.py) runs tools/document_test.js in plain Node first, then saves and opens
 # .scumble documents in instances of its own (a fresh profile, a kill mid-save, a close during a save, newer files).
 # Logs and summary.txt go to $SCUMBLE_GATES/gates/<label>/. Exit code 0 only when every gate passed.

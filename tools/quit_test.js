@@ -174,7 +174,9 @@ function bundle(tag, pics, empty = 0) {
         await check("main_prevents_a_close_until_the_window_saved", () => {
             const b = bodyAfter(main, /win\.on\("close", \(e\) => /);
             assert(b, "the close handler is not there");
-            const agent = b.indexOf("if (agentMode)"), guard = b.indexOf("quitGuard.onClose()"), prevent = b.indexOf("e.preventDefault();", guard), flush = b.indexOf('quitGuard.run(() => flushAll("quit"))'), close = b.indexOf("win.close()", flush);
+            // the prevent every platform takes: a line of its own, not the macOS one inside the "allow" branch
+            const lineAfter = (from) => { const i = from < 0 ? -1 : b.slice(from).search(/^[ \t]*e\.preventDefault\(\);\r?$/m); return i < 0 ? -1 : from + i; };
+            const agent = b.indexOf("if (agentMode)"), guard = b.indexOf("quitGuard.onClose()"), prevent = lineAfter(guard), flush = b.indexOf('quitGuard.run(() => flushAll("quit"))'), close = b.indexOf("win.close()", flush);
             assert(agent >= 0 && guard > agent, "the guard is not asked after the agent branch");
             assert(prevent > guard && flush > prevent && close > flush, "the close is not prevented, saved, then closed again");
             assert(/if \(what === "allow"\) \{ (?:if \(process\.platform === "darwin" && !quitting\) \{ e\.preventDefault\(\); hideClosedWindow\(\); \} )?return; \}|if \(what === "allow"\) return;/.test(b), "an allowed close does not go through");

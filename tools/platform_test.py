@@ -1,13 +1,14 @@
 """The per-platform parts of the build and of the app (B1 + B2, docs/PLAN_0_1_24.md).
 
 No ComfyUI, no key. First `node tools/platform_test.js` (the MCP registration of every platform, the files each
-installer leaves out), then the app:
+installer leaves out) and `node tools/platform_keys_test.js` (Cmd for Ctrl on a Mac only), then the app:
 
 - what the API keys section says for every credential store: the Windows and macOS stores and a Linux keyring
   plainly, no store at all and Linux' `basic_text` fallback (obfuscated, not encrypted) as a warning;
 - the Settings dialog shows the note for this machine's real store, and on Windows that is DPAPI, not a warning;
 - the Updates section of the Microsoft Store copy (electron/main/msix.js) offers no check, no switch and no GitHub
-  text, and the installer's section comes back unchanged; this instance is not the Store copy.
+  text, and the installer's section comes back unchanged; this instance is not the Store copy. A packaged macOS app
+  (and only that) is updated by a download: no controls, the GitHub Releases note; elsewhere the controls show.
 
     python tools/platform_test.py
 
@@ -83,12 +84,15 @@ const store = read();
 shell.renderUpdate(before);
 const back = read();
 document.getElementById("shell-settings").close();
-// a packaged macOS app is updated by a download ("manual"): it offers no feed to check either
-const ownHidden = before.state === "manual" ? "[true,true,true]" : "[false,false,false]";
-if (JSON.stringify(own.hidden) !== ownHidden) throw new Error("this instance hides its updates: " + JSON.stringify(own));
+// the expectation comes from the platform, not from the state under test: a packaged macOS app, and only that, is
+// updated by a download ("manual") and offers no feed to check; everywhere else the controls show as before
+const manual = navigator.platform.startsWith("Mac") && before.state !== "dev";
+if ((before.state === "manual") !== manual) throw new Error("the updater state does not fit " + navigator.platform + ": " + JSON.stringify(before));
+if (JSON.stringify(own.hidden) !== (manual ? "[true,true,true]" : "[false,false,false]")) throw new Error("this instance hides its updates: " + JSON.stringify(own));
+if (manual && !/ for macOS: new versions are downloaded from GitHub Releases\.$/.test(own.note)) throw new Error("the macOS note is missing: " + JSON.stringify(own));
 if (JSON.stringify(store.hidden) !== "[true,true,true]" || !/Microsoft Store/.test(store.note) || /GitHub/.test(store.note)) throw new Error("the Store copy still offers GitHub updates: " + JSON.stringify(store));
 if (JSON.stringify(back) !== JSON.stringify(own)) throw new Error("the section did not come back: " + JSON.stringify(back) + " against " + JSON.stringify(own));
-return { state: before.state, store: store.note };
+return { platform: navigator.platform, state: before.state, own: own.note, store: store.note };
 """))
 
 PRE = """(async () => {
@@ -99,11 +103,14 @@ PRE = """(async () => {
 
 
 def node_step():
-    r = subprocess.run(["node", os.path.join(ROOT, "tools", "platform_test.js")], cwd=ROOT, capture_output=True, text=True, encoding="utf-8", timeout=120)
-    tail = r.stdout.strip()
-    if r.returncode != 0 or not tail.endswith("PASS"):
-        raise Exception("tools/platform_test.js: " + (tail + r.stderr)[-1500:])
-    return {"checks": tail.count("[ok]")}
+    checks = 0
+    for name in ("platform_test.js", "platform_keys_test.js"):
+        r = subprocess.run(["node", os.path.join(ROOT, "tools", name)], cwd=ROOT, capture_output=True, text=True, encoding="utf-8", timeout=120)
+        tail = r.stdout.strip()
+        if r.returncode != 0 or not tail.endswith("PASS"):
+            raise Exception("tools/%s: %s" % (name, (tail + r.stderr)[-1500:]))
+        checks += tail.count("[ok]")
+    return {"checks": checks}
 
 
 async def run_all(c):

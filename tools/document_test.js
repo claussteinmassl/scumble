@@ -408,9 +408,10 @@ function listTree(dir) {
             const first = slow.write({ reqId: "a", path: target, document: f.document, plugins: f.plugins });
             await new Promise((res) => setTimeout(res, 50));
             let second = null;
-            // a spelling every platform takes for the same path: the case on Windows (as before), a "/./" segment elsewhere
-            // (Linux keeps case apart; a job that is not refused would wait for the gate below forever)
-            const respelt = process.platform === "win32" ? target.toUpperCase() : scratch + path.sep + "." + path.sep + "svc2.scumble";
+            // another spelling of the same path: the case on Windows (as before) and on macOS (APFS folds it; pathKey folds
+            // it on a case-sensitive volume too), a "/./" segment on Linux, which keeps case apart (a job that is not
+            // refused would wait for the gate below forever)
+            const respelt = process.platform === "win32" || process.platform === "darwin" ? target.toUpperCase() : scratch + path.sep + "." + path.sep + "svc2.scumble";
             try { await slow.write({ reqId: "b", path: respelt, document: f.document, plugins: f.plugins }); } catch (e) { second = e.message; }
             const idle = slow.idle();
             release();
