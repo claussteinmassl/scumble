@@ -202,3 +202,56 @@ user the same day:
   whose dropdown holds `magnificsub` alone ("own model recipes", the user's choice).
 - **Retouch** stays the recipe `magnificsub_retouch` (Magnific's own tool with its own models).
 - A saved selection of a removed recipe id moves to the recipe that replaces it.
+
+### Results of the restructure (2026-10-01)
+
+Built on the branch `magnificsub-recipes`: the adapter reads the model from the variant (Task 1), then the recipes
+(Task 2). Every mapping was checked against `tools/refs/magnificsub/catalog_images_models_list.txt` and against the
+recipe's own model (its other variants' model ids, its name and description); only an exact model and version is
+mapped.
+
+**Mapped** (a `magnificsub` variant added, the recipe's default and every other variant unchanged):
+- `flux2_pro` -> `flux-2` ("Flux.2 Pro"); `flux2_max` -> `flux-2-max` ("Flux.2 Max"); `flux2_flex` -> `flux-2-flex`
+  ("Flux.2 Flex"). Edit and Generate new.
+- `nano_banana_pro` -> `imagen-nano-banana-2` ("Google Nano Banana Pro"); `nano_banana_2` ->
+  `imagen-nano-banana-2-flash` ("Google Nano Banana 2"); `nano_banana_2_lite` -> `imagen-nano-banana-2-lite` ("Google
+  Nano Banana 2 Lite"). Edit and Generate new.
+- `seedream_4_5` -> `seedream-4-5`; `seedream_5_lite` -> `seedream-5-lite` ("Seedream 5 Lite"); `seedream_5_pro` ->
+  `seedream-5-pro`. Edit and Generate new.
+- `gpt_image_2` -> `gpt-2` ("GPT 2"; the catalog's GPT family is GPT, GPT 1.5, GPT 2, GPT 2.5). Edit and Generate new.
+- `grok_imagine` -> `grok-imagine-2` ("Grok Imagine 2.0", beta and private): not in the brief's list, but the same
+  model and version as the recipe (xAI Grok Imagine Image 2.0 on fal, OpenRouter, Comfy Router, Oxen). Edit and
+  Generate new.
+- `ideogram_4` -> `ideogram-4` ("Ideogram 4"); `recraft_v4` -> `recraft-v4` ("Recraft V4", not V4 Pro or V4.1). The
+  catalog gives both style references only, so the variants are Generate new only (`edit: false`).
+- `magnific_creative` -> `creative`, with the Creative rows; `magnific_precision` -> `precision`, with the Mode row
+  and the Precision rows and its own factor 2 / 4 / 8 / 16. The REST `magnific` variant stays the default.
+
+**Own recipes** (`magnificsub` alone, family Magnific): `magnific_auto` "Magnific Auto" (`auto`; edits too, the
+user's ruling), `ideogram_4_5` "Ideogram 4.5 (beta)", `qwen_image_3_0_pro` "Qwen Image 3.0 Pro (beta)" (both edit and
+Generate new), `mystic_2_5` "Mystic 2.5" and `recraft_v4_1` "Recraft V4.1" (Generate new only: style references only,
+and the adapter refuses their edits).
+
+**Left out**, never guessed:
+- `flux2_klein` (FLUX.2 [klein] 9B): the catalog's "Flux.2 Klein" does not say 4B or 9B.
+- `z_image` (Z-Image [base]) and `z_image_turbo`: the catalog's "Z-Image" names no variant, and Magnific's REST
+  `text-to-image/z-image` already sits on the Turbo recipe, so base it is not known to be.
+- `mystic` (Magnific's REST Mystic with six model styles, no version named): the catalog lists Mystic 1.0, Mystic 2.5,
+  2.5 Flexible and 2.5 Fluid as separate models, none the same as the recipe's six-style model; Mystic 2.5 became its
+  own recipe.
+- `gpt_image_2_5_flare`, `gpt_image_2_5_sunburst`: the catalog's "GPT 2.5" (`gpt-2-mini`, beta) has the variants
+  flare and sunburst, but `images_generate` is not known to pick one; ambiguous.
+- `krea_2` (Krea 2 [large]): the catalog's "Krea 2" names no size.
+- `qwen_image_2_1`, `qwen_image_edit`, `hy_image_3_5`, `reve`, `flux1_fill`, the expand, inpaint and other upscale
+  recipes: no catalog entry of the same model.
+- Magnific's "Auto" is in no other model's recipe.
+
+**Removed:** `magnificsub_creative`, `magnificsub_precision`, `magnificsub_generate`. `electron/main/settings.js`
+moves a stored `recipe`, `recipeByMode` or `upscaleRecipe` naming one to `magnific_creative`, `magnific_precision` or
+`magnific_auto` with the provider `magnificsub`, and a leftover `recipeProviders` entry where the replacement has no
+choice of its own (`tools/settings_migration_test.js`). `GENERATE_MODELS` gained the mapped models after the spec's
+list (Flux.2 Flex, Google Nano Banana 2 Lite, Seedream 4.5, Seedream 5 Lite, Ideogram 4, Recraft V4, Grok Imagine 2.0
+(beta)), each checked against the catalog by `tools/magnificsub_test.js`.
+
+**Not done:** no resolution row (the catalog lists resolutions for several models, but the adapter sends none and the
+model picks the pixel size); nothing of the restructure ran live.

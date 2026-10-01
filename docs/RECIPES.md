@@ -2106,28 +2106,58 @@ reconnects once and sends the call again only for tools that cannot charge; a cr
 connection says so ("it may still run and be charged") instead of running twice. A failed creation ends the run with
 Magnific's reason; a timeout says the creation may still finish in the user's Magnific library.
 
-**Four recipes**, all `default: "magnificsub"`, curated and static (the account's catalog is not read at run time):
+**Where it is chosen: recipe = model, dropdown = provider.** The subscription is not a recipe family of its own: it
+is the provider `magnificsub` in the provider dropdown of the recipe of each model it serves (Settings › Recipes, and
+the select beside the recipe), beside fal, the vendor's own API, Magnific's API and the rest. A shared recipe's
+default stays what it was; picking "Magnific (subscription)" there is remembered per recipe (`recipeProviders`). A
+recipe gets the variant only when Magnific's catalog serves **exactly** that model and version (never a neighbour of
+it); the decisions and what was left out are in `docs/PLAN_MAGNIFIC_SUB.md` "Restructure". Curated and static: the
+account's catalog is not read at run time.
 
-| Recipe | Tool | What it does |
+| Recipe | `model` of the variant | What it does |
 |---|---|---|
-| `magnificsub_creative`, Magnific Creative (subscription) | `images_upscale` | Family *Upscale*, factor 2, 4, 8, 16, the prompt goes along. Rows: Preset (Subtle, Vivid, Wild, Custom (sliders)), Optimized for, Engine, Creativity, Resemblance, HDR, Fractality. A named preset goes alone; the four sliders go only with "Custom (sliders)". |
-| `magnificsub_precision`, Magnific Precision (subscription) | `images_upscale` | Family *Upscale*, no prompt. Rows: Mode (Precision sublime, photo, photo denoiser, v1), Precision preset (None (sliders), Balanced, Portraits, Grainy analog), Sharpness, Grain, Ultra detail. Sublime takes 2, 4, 8, 16 and no Ultra detail; photo, photo denoiser and v1 take 2 only, and another factor is refused before the upload. A preset goes alone, the sliders only with "None (sliders)". |
-| `magnificsub_retouch`, Magnific Retouch (subscription) | `images_retouch` | `input: "fill"`, `text: false`: the crop and the selection (white = change) as the mask. Rows: Mode (Replace, Erase), Model (Auto, Classic, Erase, Google Nano Banana Pro, Google Nano Banana 2), Resolution (Default, 1k, 2k, 4k; only the two Nano Banana models have one, a value the model lacks is refused before the upload). Replace needs a prompt, Erase takes none. Reference layers are not sent. |
-| `magnificsub_generate`, Magnific Generate (subscription) | `images_generate` | Generate new only (`edit: false`), up to 12 reference layers, `count: 1`. Row: Model. The aspect is the model's closest to the asked size; the model picks the pixel size. |
+| `flux2_pro`, `flux2_max`, `flux2_flex` | `flux-2`, `flux-2-max`, `flux-2-flex` | Edit and Generate new. |
+| `nano_banana_pro`, `nano_banana_2`, `nano_banana_2_lite` | `imagen-nano-banana-2`, `imagen-nano-banana-2-flash`, `imagen-nano-banana-2-lite` | Edit and Generate new. |
+| `seedream_4_5`, `seedream_5_lite`, `seedream_5_pro` | `seedream-4-5`, `seedream-5-lite`, `seedream-5-pro` | Edit and Generate new. |
+| `gpt_image_2`, `grok_imagine` | `gpt-2`, `grok-imagine-2` | Edit and Generate new (Grok Imagine 2.0 is beta and private in the catalog). |
+| `ideogram_4`, `recraft_v4` | `ideogram-4`, `recraft-v4` | Generate new only (`edit: false`): the catalog gives them style references only. |
+| `magnific_auto`, Magnific Auto | `auto` | Own recipe, `magnificsub` alone: Magnific picks the model per run. Edit and Generate new. |
+| `ideogram_4_5`, Ideogram 4.5 (beta); `qwen_image_3_0_pro`, Qwen Image 3.0 Pro (beta) | `ideogram-4-5`, `qwen-image-3-0-pro` | Own recipes, `magnificsub` alone. Edit and Generate new. |
+| `mystic_2_5`, Mystic 2.5; `recraft_v4_1`, Recraft V4.1 | `mystic-2-5`, `recraft-v4-1` | Own recipes, `magnificsub` alone. Generate new only (style references only). |
+| `magnific_creative`, Magnific Creative (upscale) | `creative` | `images_upscale`, factor 2, 4, 8, 16, the prompt goes along. Rows: Preset (Subtle, Vivid, Wild, Custom (sliders)), Optimized for, Engine, Creativity, Resemblance, HDR, Fractality. A named preset goes alone; the four sliders go only with "Custom (sliders)". The REST `magnific` variant stays the default. |
+| `magnific_precision`, Magnific Precision (upscale) | `precision` | `images_upscale`, no prompt, the variant's own factor 2, 4, 8, 16. Rows: Mode (Precision sublime, photo, photo denoiser, v1), Precision preset (None (sliders), Balanced, Portraits, Grainy analog), Sharpness, Grain, Ultra detail. Sublime takes 2, 4, 8, 16 and no Ultra detail; photo, photo denoiser and v1 take 2 only, and another factor is refused before the upload. A preset goes alone, the sliders only with "None (sliders)". The REST `magnific` variant stays the default. |
+| `magnificsub_retouch`, Magnific Retouch (subscription) | `images_retouch` | Own recipe (Magnific's retouch tool with its own models). `input: "fill"`, `text: false`: the crop and the selection (white = change) as the mask. Rows: Mode (Replace, Erase), Model (Auto, Classic, Erase, Google Nano Banana Pro, Google Nano Banana 2), Resolution (Default, 1k, 2k, 4k; only the two Nano Banana models have one, a value the model lacks is refused before the upload). Replace needs a prompt, Erase takes none. Reference layers are not sent. |
 
-An upscale recipe's `limits` are 32 to 4096 like the other upscalers (Magnific's real limit on this route is not
-known). A bare `images_upscale` from an agent lets the Mode decide, Creative the default; a mode of the other kind
-than the recipe's is refused. The adapter's own sentinel `images_upscale:creative` / `:precision` in `model` carries
-the kind.
+**A generate variant** (`images_generate`, `count: 1`): `model` and `text.model` are the same catalog slug,
+`settings: []`, `text: { sizes: [1024, 2048], refs: { max: 12 } }`. Generate new sends the prompt and up to 12
+reference layers; the aspect is the model's closest to the asked size, and the model picks the pixel size (the adapter
+sends no resolution). An edit (`input: "edit"`) sends the crop as it is as `references[0]` (type `image`), then the
+Original and the reference layers (12 pictures together), with the prompt as a numbered instruction; no mask, the
+stitch keeps the selection. `limits: { max: 2048, aspects }` holds the model's aspects cut to the `images_generate`
+enum, so the crop's context is widened to the preset the adapter then asks for, and the answer is stretched onto the
+box. A style-only model refuses an edit, so its variant is `edit: false`.
+
+**The removed recipes.** `magnificsub_creative`, `magnificsub_precision` and `magnificsub_generate` went with the
+restructure (2026-10-01). A stored selection naming one (`recipe`, `recipeByMode`, `upscaleRecipe`) moves to
+`magnific_creative`, `magnific_precision` or `magnific_auto` with the provider `magnificsub` when the settings are
+read (`electron/main/settings.js` `migrateRecipes`); a leftover `recipeProviders` entry of a removed id moves only
+where the replacement has no choice of its own. The adapter still runs their shapes for an agent or an imported copy:
+`images_generate` with a Model row, `images_upscale:creative` / `:precision`, a bare `images_upscale`.
+
+An upscale variant's `limits` are 32 to 4096 like the other upscalers (Magnific's real limit on this route is not
+known). A mode of the other kind than the variant's model is refused.
 
 **Models.** The generate and retouch lists are the models the account's catalog lists (copied to
 `tools/refs/magnificsub/catalog_*.txt` on 2026-10-01), cut to a curated set. The rule: the models the account's catalog
-lists are offered, and one the catalog marks beta or private carries "(beta)" in its label, which a live run confirms. Today that is GPT 2.5, Ideogram 4.5 and Qwen Image 3.0 Pro. `tools/magnificsub_test.js`
-checks every label against the catalog's name and flags. Generate: Auto, Flux.2 Pro, Flux.2 Max, GPT 2, GPT 2.5
+lists are offered, and one the catalog marks beta or private carries "(beta)" in its label, which a live run confirms. Today that is GPT 2.5, Ideogram 4.5, Qwen Image 3.0 Pro and Grok Imagine 2.0. `tools/magnificsub_test.js`
+checks every label against the catalog's name and flags. Generate (`GENERATE_MODELS`): Auto, Flux.2 Pro, Flux.2 Max, GPT 2, GPT 2.5
 (beta), Google Nano Banana Pro, Google Nano Banana 2, Seedream 5 Pro, Ideogram 4.5 (beta), Mystic 2.5, Recraft V4.1,
-Qwen Image 3.0 Pro (beta). Mystic 2.5 and Recraft V4.1 take no image reference, so reference layers go to them as
-style pictures, which the prompt cannot name (`index.js` refuses a prompt that does). The aspect lists are the
-catalog's cut to the `images_generate` schema's enum, and the field the adapter sends is `mode`, not `model`.
+Qwen Image 3.0 Pro (beta), then the models of the mapped recipes: Flux.2 Flex, Google Nano Banana 2 Lite, Seedream 4.5,
+Seedream 5 Lite, Ideogram 4, Recraft V4, Grok Imagine 2.0 (beta). No recipe offers GPT 2.5 (beta): the catalog does not
+say which of its variants (flare, sunburst) a run gets, so it is not mapped to GPT Image 2.5 Flare or Sunburst. Mystic 2.5, Recraft
+V4.1, Ideogram 4 and Recraft V4 take no image reference, so reference layers go to them as style pictures, which the
+prompt cannot name (`index.js` refuses a prompt that does). The aspect lists are the catalog's cut to the
+`images_generate` schema's enum, and the field the adapter sends is `mode`, not `model`.
 
 **The retouch crop.** Magnific renders a retouch inside the HTTP request, which dies at about 30 s on large
 pictures, so image and mask go at most 2048 px on the long side and on multiples of 8. Within 2048 the crop is not
@@ -2166,8 +2196,9 @@ checked again, a PUT follows 307 / 308 only, at most 5 hops) and the download's 
 (`node tools/magnificsub_mock.js --port N`, or `--app` for decodable pictures and `GET /__mock/calls`; scripted
 triggers: a prompt or file name `mock-failed`, `mock-slow`, upload bytes `mock-put-503`, and the `script` object for
 401s, expiry, a failing refresh, credits, results, a dropped connection per tool and redirects). The gate `magnificsub` (`tools/magnificsub_test.py`) runs it
-first, then the app with `settings.magnificsub.base` on the mock: the row signed out, in and out again, the four
-recipes' "(not signed in)" labels, one run of each verb through the window with the credits in the status line,
+first, then the app with `settings.magnificsub.base` on the mock: the row signed out, in and out again, the
+"(not signed in)" label of the subscription's option in the recipes' provider dropdowns, one run of each verb through
+the window (Creative on `magnific_creative`, Generate new on `magnific_auto`) with the credits in the status line,
 and the cutout list. Run it with `bash tools/run_gates.sh <label> --offline --tiles on magnificsub`. With the base on
 the mock the app opens no browser: the authorization URL waits in `providers:status`.
 
