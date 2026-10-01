@@ -78,8 +78,10 @@ const MOVED_RECIPES = Object.freeze({
 
 /**
  * Move a stored selection of a removed recipe id (`recipe`, `recipeByMode`, `upscaleRecipe`) to the recipe that replaced
- * it, with the provider the old recipe ran on as that recipe's provider. A `recipeProviders` entry of a removed id goes
- * to the new id only where that has none of its own (a selection still moves it). Changes `stored` in place.
+ * it, with the provider the old recipe ran on as that recipe's provider. A `recipeProviders` entry of a removed id is
+ * dropped and carries nothing over on its own: only a removed id that is still selected switches its replacement to
+ * that provider (a leftover entry alone must not move a user from their API key to plan credits). Changes `stored`
+ * in place.
  * @param {Record<string, any>} stored the settings as read from the file
  * @returns {Record<string, any>} the same object
  */
@@ -88,14 +90,14 @@ function migrateRecipes(stored) {
     const moved = (id) => (typeof id === "string" && Object.prototype.hasOwnProperty.call(MOVED_RECIPES, id) ? MOVED_RECIPES[id] : null);
     const providers = stored.recipeProviders && typeof stored.recipeProviders === "object" ? { ...stored.recipeProviders } : {};
     let changed = false;
-    const take = (id, keep = false) => {
+    const take = (id) => {
         const m = moved(id);
         if (!m) return id;
-        if (!keep || !providers[m.id]) providers[m.id] = m.provider;
+        providers[m.id] = m.provider;
         changed = true;
         return m.id;
     };
-    for (const old of Object.keys(providers)) if (moved(old)) { delete providers[old]; take(old, true); }
+    for (const old of Object.keys(providers)) if (moved(old)) { delete providers[old]; changed = true; }
     if (moved(stored.recipe)) stored.recipe = take(stored.recipe);
     if (moved(stored.upscaleRecipe)) stored.upscaleRecipe = take(stored.upscaleRecipe);
     if (stored.recipeByMode && typeof stored.recipeByMode === "object" && Object.values(stored.recipeByMode).some(moved)) {

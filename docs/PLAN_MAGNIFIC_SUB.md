@@ -249,8 +249,9 @@ and the adapter refuses their edits).
 
 **Removed:** `magnificsub_creative`, `magnificsub_precision`, `magnificsub_generate`. `electron/main/settings.js`
 moves a stored `recipe`, `recipeByMode` or `upscaleRecipe` naming one to `magnific_creative`, `magnific_precision` or
-`magnific_auto` with the provider `magnificsub`, and a leftover `recipeProviders` entry where the replacement has no
-choice of its own (`tools/settings_migration_test.js`). `GENERATE_MODELS` gained the mapped models after the spec's
+`magnific_auto` with the provider `magnificsub`; a leftover `recipeProviders` entry of a removed id is dropped and
+carries nothing over on its own, so it never moves a user from their API key to plan credits
+(`tools/settings_migration_test.js`). `GENERATE_MODELS` gained the mapped models after the spec's
 list (Flux.2 Flex, Google Nano Banana 2 Lite, Seedream 4.5, Seedream 5 Lite, Ideogram 4, Recraft V4, Grok Imagine 2.0
 (beta)), each checked against the catalog by `tools/magnificsub_test.js`.
 

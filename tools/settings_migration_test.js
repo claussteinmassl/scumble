@@ -56,8 +56,8 @@ try {
     let g = s.get();
     check("recipe, recipeByMode and upscaleRecipe naming a removed id move to its replacement",
         g.recipe === "magnific_auto" && g.recipeByMode.api === "magnific_auto" && g.recipeByMode.local === "flux2_klein_local" && g.upscaleRecipe === "magnific_precision", JSON.stringify([g.recipe, g.recipeByMode, g.upscaleRecipe]));
-    check("each replacement runs on magnificsub; the removed ids leave recipeProviders, the other entries stay",
-        g.recipeProviders.magnific_auto === "magnificsub" && g.recipeProviders.magnific_precision === "magnificsub" && g.recipeProviders.magnific_creative === "magnificsub"
+    check("each selected replacement runs on magnificsub; the leftover magnificsub_creative entry (not selected anywhere) carries nothing over; the removed ids leave recipeProviders, the other entries stay",
+        g.recipeProviders.magnific_auto === "magnificsub" && g.recipeProviders.magnific_precision === "magnificsub" && !("magnific_creative" in g.recipeProviders)
         && g.recipeProviders.flux2_pro === "bfl" && !Object.keys(g.recipeProviders).some((k) => k.startsWith("magnificsub_")), JSON.stringify(g.recipeProviders));
     s.set({ apiSize: "x1" });
     const moved = JSON.parse(fs.readFileSync(path.join(dir, "settings.json"), "utf8"));
@@ -68,6 +68,14 @@ try {
     s = fresh({ recipe: "flux2_pro", recipeProviders: { magnificsub_creative: "magnificsub", magnific_creative: "comfycloud" } });
     g = s.get();
     check("a leftover recipeProviders entry of a removed id does not override the replacement's own choice", g.recipeProviders.magnific_creative === "comfycloud" && !("magnificsub_creative" in g.recipeProviders), JSON.stringify(g.recipeProviders));
+    // a leftover entry alone must not move a user from their API key to plan credits
+    s = fresh({ recipe: "flux2_pro", upscaleRecipe: "magnific_creative", recipeProviders: { magnificsub_creative: "magnificsub", magnificsub_precision: "magnificsub", flux2_pro: "bfl" } });
+    g = s.get();
+    check("leftover entries alone: dropped, magnific_creative and magnific_precision get no magnificsub entry (they stay on their default)",
+        !("magnific_creative" in g.recipeProviders) && !("magnific_precision" in g.recipeProviders) && !Object.keys(g.recipeProviders).some((k) => k.startsWith("magnificsub_")) && g.recipeProviders.flux2_pro === "bfl" && g.upscaleRecipe === "magnific_creative", JSON.stringify(g.recipeProviders));
+    s = fresh({ recipe: "flux2_pro", upscaleRecipe: "magnificsub_creative", recipeProviders: { magnificsub_creative: "magnificsub" } });
+    g = s.get();
+    check("the removed id as the current upscaleRecipe still moves it, on magnificsub", g.upscaleRecipe === "magnific_creative" && g.recipeProviders.magnific_creative === "magnificsub" && !("magnificsub_creative" in g.recipeProviders), JSON.stringify([g.upscaleRecipe, g.recipeProviders]));
     s = fresh({ recipe: "magnific_creative", recipeByMode: { api: "seedream_5_pro" }, recipeProviders: { seedream_5_pro: "fal" } });
     g = s.get();
     check("a profile without a removed id is left as it was", g.recipe === "magnific_creative" && g.recipeByMode.api === "seedream_5_pro" && JSON.stringify(g.recipeProviders) === JSON.stringify({ seedream_5_pro: "fal" }));

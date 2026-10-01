@@ -2146,8 +2146,9 @@ box. A style-only model refuses an edit, so its variant is `edit: false`.
 **The removed recipes.** `magnificsub_creative`, `magnificsub_precision` and `magnificsub_generate` went with the
 restructure (2026-10-01). A stored selection naming one (`recipe`, `recipeByMode`, `upscaleRecipe`) moves to
 `magnific_creative`, `magnific_precision` or `magnific_auto` with the provider `magnificsub` when the settings are
-read (`electron/main/settings.js` `migrateRecipes`); a leftover `recipeProviders` entry of a removed id moves only
-where the replacement has no choice of its own. The adapter still runs their shapes for an agent or an imported copy:
+read (`electron/main/settings.js` `migrateRecipes`); a leftover `recipeProviders` entry of a removed id is dropped
+and carries nothing over on its own (only a removed id still selected switches its replacement to `magnificsub`, so a
+leftover never moves a user from their API key to plan credits). The adapter still runs their shapes for an agent or an imported copy:
 `images_generate` with a Model row, `images_upscale:creative` / `:precision`, a bare `images_upscale`.
 
 An upscale variant's `limits` are 32 to 4096 like the other upscalers (Magnific's real limit on this route is not
