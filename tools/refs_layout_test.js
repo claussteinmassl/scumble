@@ -48,7 +48,12 @@ const VERBOSE = process.env.REFS_VERBOSE === "1";
 const SENTINEL = "refs_layout_test: the request carrying the pictures was captured";
 const KEY_ONLY = new Set(["anthropic", "deepseek", "moonshot", "zai", "compat"]);
 const C1_TOKEN = String.raw`(?<![\w-])@[Ii][Mm][Gg](?:([1-9]\d{0,2})|\?(L[0-9a-z]+))(?![\w-])`;
-const SETTINGS = { toapis: { base: LOOP }, openrouter: { base: LOOP }, ark: { base: LOOP }, oxen: { base: LOOP }, magnific: { base: LOOP }, comfyrouter: { base: LOOP } };
+const SETTINGS = { toapis: { base: LOOP }, openrouter: { base: LOOP }, ark: { base: LOOP }, oxen: { base: LOOP }, magnific: { base: LOOP }, comfyrouter: { base: LOOP }, magnificsub: { base: LOOP } };
+/**
+ * Magnific (subscription) signs in instead of a key: a stored test sign-in for the loopback host (only "test-" tokens
+ * go there), which its ready() and its session read from the store the context brings.
+ */
+const MSUB_STORE = JSON.stringify({ server: LOOP, redirect: "http://127.0.0.1:9/callback", client: { client_id: "refs-layout-test" }, tokens: { access_token: "test-refs-at", refresh_token: "test-refs-rt", token_type: "Bearer" }, tokenOrigin: LOOP });
 
 const results = [];
 function check(what, ok, detail) {
@@ -156,7 +161,7 @@ function loadIndex() {
         if (request === "electron") return { nativeImage: { createFromBuffer: () => fakeImage, createFromBitmap: () => fakeImage } };
         if (parent && parent.filename === IDX) {
             if (request === "../log") return { record: (r) => LOGS.push(r) };
-            if (request === "../keys") return { get: () => KEY, describe: (id) => ({ name: id, set: true }) };
+            if (request === "../keys") return { get: (name) => (name === "magnificsub" ? MSUB_STORE : KEY), describe: (id) => ({ name: id, set: true }) };
             if (request === "../settings") return { get: () => SETTINGS };
         }
         return orig.call(this, request, parent, ...rest);
@@ -203,13 +208,14 @@ function fixturesFor(provider, model, nRefs, original) {
     const route = String(model || "").replace(/^\/+|\/+$/g, "").replace(/^v1\/ai\//, "");
     const magnific = provider === "magnific" && (route === "ideogram-image-edit" || route.startsWith("image-expand/"));
     const inapp = provider === "inapp";
-    const [w, h] = inapp ? [512, 512] : magnific ? [512, 384] : [1024, 768];
+    const msub = provider === "magnificsub";   // its retouch decodes the picture and the mask
+    const [w, h] = inapp ? [512, 512] : magnific || msub ? [512, 384] : [1024, 768];
     const F = 32;
     let image, mask;
     if (inapp) {
         image = imagePng(w, h);
         mask = maskPng(w, h, (x, y) => (x >= 128 && x < 384 && y >= 128 && y < 384 ? 255 : 0));
-    } else if (magnific) {
+    } else if (magnific || msub) {
         image = imagePng(w, h);
         mask = maskPng(w, h, (x, y) => (x < F || y < F || x >= w - F || y >= h - F ? 255 : 0));
     } else {
@@ -229,6 +235,11 @@ function fixturesFor(provider, model, nRefs, original) {
         add("mask", codec.fromBitmap({ width: bm.width, height: bm.height, data: inv }));
     }
     if (magnific && route.startsWith("image-expand/")) add("crop", codec.cropPng(image, { x: F, y: F, width: w - 2 * F, height: h - 2 * F }));
+    if (msub) {
+        // the retouch sends the mask as black and white, padded in black to multiples of 8 (512 x 384 needs none)
+        const P = require(path.join(PROV, "magnificsub_pictures.js"));
+        add("mask", codec.fromBitmap(P.pad(P.binaryMask(codec.bitmap(mask), w, h), w, h, "black")));
+    }
     if (inapp) {
         const img = codec.bitmap(image), soft = codec.bitmap(mask), n = w * h;
         const rgba = Buffer.alloc(n * 4), hole = Buffer.alloc(n);
@@ -303,11 +314,42 @@ async function capture(p, req, verb = "edit") {
     const shot = { calls: [], uploads: new Map(), pending: new Map(), request: null, error: null, result: null };
     let k = 0;
     const upload = (url, bytes) => { shot.uploads.set(url, bytes); return url; };
+    const msub = req.provider === "magnificsub";
+    /**
+     * Magnific (subscription) speaks MCP (JSON-RPC posted to the server's root): initialize, the upload tools (a PUT
+     * to the proxy URL, the finalize names the creation the bytes became), and the first creating tool is the request
+     * with the pictures: its arguments, its creation identifiers mapped to the uploaded bytes.
+     */
+    async function mcp(u, method, init, url) {
+        if (u.pathname !== "/") return null;
+        if (method !== "POST") return new Response(null, { status: 405 });   // no SSE stream, no session to end
+        const msg = JSON.parse(String(init.body));
+        if (msg.id === undefined) return new Response(null, { status: 202 });   // a notification
+        const reply = (result) => json(200, { jsonrpc: "2.0", id: msg.id, result });
+        if (msg.method === "initialize") return reply({ protocolVersion: msg.params.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: "refs-layout-test", version: "0" } });
+        if (msg.method !== "tools/call") return json(200, { jsonrpc: "2.0", id: msg.id, error: { code: -32601, message: "no method " + msg.method } });
+        const name = msg.params.name, args = msg.params.arguments || {};
+        const tool = (out) => reply({ content: [{ type: "text", text: JSON.stringify(out) }], structuredContent: out });
+        if (name === "creations_request_upload") {
+            const put = `${u.origin}/upload/u${++k}`, at = `uploads/u${k}.png`;
+            shot.pending.set(put, at);
+            return tool({ proxyUploadUrl: put, path: at });
+        }
+        if (name === "creations_finalize_upload") {
+            const id = `upl-${++k}`;
+            shot.uploads.set(id, shot.uploads.get(args.path));
+            shot.uploads.delete(args.path);
+            return tool({ identifier: id });
+        }
+        if (!shot.request) { shot.request = args; shot.url = `${String(url)}#${name}`; }
+        throw new Error(SENTINEL);
+    }
     async function fetch(url, init = {}) {
         const method = String(init.method || "GET").toUpperCase();
         const u = new URL(String(url));
         shot.calls.push(`${method} ${u.host}${u.pathname}`);
         if (method === "PUT" && shot.pending.has(String(url))) { upload(shot.pending.get(String(url)), await bytesOf(init.body)); return new Response(null, { status: 200 }); }
+        if (msub) { const r = await mcp(u, method, init, url); if (r) return r; }
         if (method === "GET") return u.pathname === "/api/v1/providers" ? json(200, { data: [] }) : json(404, { error: { message: "no route " + u.pathname } });
         const at = u.pathname;
         if (/\/v1\/uploads\/images$/.test(at)) {                              // ToAPIs
@@ -340,6 +382,11 @@ async function capture(p, req, verb = "edit") {
         key: KEY, base: LOOP, fetch, log: () => {}, sleep: async () => {}, random: () => 0, now: () => 0, uuid: () => "0b0e7a52-5c4f-4a8e-9d1b-3f6a2c7d8e90",
         toJpeg: () => null, opaque: () => true, bitmap: codec.bitmap, fromBitmap: codec.fromBitmap, cropPng: codec.cropPng,
     };
+    if (msub) {
+        // a fresh store per capture, so the adapter's one session per process is made again with this capture's fetch
+        const store = { magnificsub: MSUB_STORE };
+        Object.assign(ctx, { settings: SETTINGS, keys: { get: (n) => store[n] || "", set: (n, v) => { store[n] = String(v); }, clear: (n) => { delete store[n]; } } });
+    }
     const orig = Module._load;
     if (req.provider === "inapp") {
         Module._load = function (request, parent, ...rest) {
@@ -1423,6 +1470,7 @@ async function main() {
                 openai: "https://api.openai.com/v1/images/edits", gemini: `https://generativelanguage.googleapis.com/v1beta/models/${req.model}:generateContent`,
                 openrouter: `${LOOP}/api/v1/images`, ark: `${LOOP}/api/v3/images/generations`, oxen: `${LOOP}/api/ai/images/edit`,
                 magnific: `${LOOP}/v1/ai/${req.model}`, comfyrouter: `${LOOP}/v2/models/${req.model}/requests`, comfypartner: `${LOOP}/proxy/tencent/v1/wand/hunyuan-image/v35-generation`,
+                magnificsub: `${LOOP}/#images_generate`,   // an MCP tool call: the server's root, the tool after "#"
             };
             if (!(s.provider in ENDPOINT)) bad.push(`no endpoint known for ${s.provider}: add it to this test`);
             else if (url !== ENDPOINT[s.provider]) bad.push(`POSTs to ${url}, not ${ENDPOINT[s.provider]}`);
@@ -1475,7 +1523,7 @@ async function main() {
             if (NO_SHAPE.test(name)) { tally.noShape++; if (shape.length) bad.push(`on the no-shape list, yet it sends ${short(shape)}`); }
             else if (!shape.some(is169)) bad.push(`the asked 16:9 at 1344 x 768 is not in ${short(shape)}`);
             // the instruction sentence where the route writes one, the prompt as given where it does not
-            const SENTENCE = new Set(["gemini", "openrouter", "ark", "oxen", "magnific", "comfypartner", "comfyrouter:vertexai", "comfyrouter:byteplus", "comfyrouter:qwen"]);
+            const SENTENCE = new Set(["gemini", "openrouter", "ark", "oxen", "magnific", "magnificsub", "comfypartner", "comfyrouter:vertexai", "comfyrouter:byteplus", "comfyrouter:qwen"]);
             const sent = [...new Set(stringsWith(shot.request, req.prompt))];
             const wantText = SENTENCE.has(key) && lay ? refs.instruction(req, lay, req.prompt) : req.prompt;
             if (SENTENCE.has(key)) tally.sentence++;
@@ -1520,7 +1568,7 @@ async function main() {
             if (VERBOSE) console.log("   " + JSON.stringify(redacted(shot.request, fx, shot)));
         }
         const DIALECTS = ["openai", "vertexai", "bfl", "byteplus", "qwen"].map((d) => `comfyrouter:${d}`);
-        const ADAPTERS = ["toapis", "bfl", "fal", "replicate", "wavespeed", "openai", "gemini", "openrouter", "ark", "oxen", "magnific", "comfypartner"];
+        const ADAPTERS = ["toapis", "bfl", "fal", "replicate", "wavespeed", "openai", "gemini", "openrouter", "ark", "oxen", "magnific", "comfypartner", "magnificsub"];
         const missing = [...ADAPTERS, ...DIALECTS].filter((k) => !tally.routes.has(k));
         check(`the text runs covered ${tally.variants} variants: every adapter and every Comfy Router dialect with a text route (${tally.routes.size}); ${tally.capped} capped, ${tally.uncapped} uncapped; ${tally.sentence} with the reference sentence, ${tally.parts} with label parts, ${tally.noShape} with no shape field`, !missing.length && tally.variants >= 90, missing.length ? "none for " + missing.join(", ") : short({ ...tally, routes: [...tally.routes] }));
 
@@ -1535,7 +1583,7 @@ async function main() {
             const names = execFileSync("git", ["-C", ROOT, "ls-tree", "--name-only", `${BEFORE_26F}:electron/main/providers`], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).split(/\r?\n/).filter((f) => f.endsWith(".js"));
             dir = fs.mkdtempSync(path.join(os.tmpdir(), "refs-layout-before-26f-"));
             for (const f of names) fs.writeFileSync(path.join(dir, f), execFileSync("git", ["-C", ROOT, "show", `${BEFORE_26F}:electron/main/providers/${f}`], { stdio: ["ignore", "pipe", "ignore"] }));
-            before = (id) => require(path.join(dir, id + ".js"));
+            before = (id) => (names.includes(id + ".js") ? require(path.join(dir, id + ".js")) : null);
         } catch (err) { why = String(err && err.message || err).split(/\r?\n/)[0]; }
         const reset = (m) => { if (m && typeof m._resetHosts === "function") m._resetHosts(); };
         /** Where two values differ: "path: a -> b" per leaf (a Buffer is a leaf). */
@@ -1569,6 +1617,7 @@ async function main() {
             if (d1.length) zero.sameShape.push(`${name}: ${d1.join("; ")}`);
             if (!before) return;
             const q = before(s.provider);
+            if (!q) return;   // an adapter added after 26f has no request of before to match
             reset(p); reset(q);
             const c = await capture(q, old, "generate");
             const d2 = differs(c, a);
