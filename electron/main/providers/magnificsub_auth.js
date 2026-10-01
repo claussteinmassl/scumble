@@ -301,7 +301,8 @@ function memoryStore() {
 /**
  * Signs in through the browser: a fresh start (a new client, new tokens), the loopback redirect, `openExternal(url)`
  * with the realm's authorization page, the code from the redirect traded for tokens, one connect to confirm. Resolves
- * to status(). ctx: { keys, settings, openExternal, fetch?, timeoutMs?, version? }.
+ * to status(). ctx: { keys, settings, openExternal, fetch?, timeoutMs?, version?, signal? } (signal: an AbortSignal that
+ * cancels the wait for the browser).
  *
  * Everything the sign-in writes goes to a store in memory first; the stored sign-in is replaced only when the new one
  * has succeeded, so a sign-in that is cancelled, times out or fails leaves the old one as it was.
@@ -315,6 +316,11 @@ async function signIn(ctx) {
     const { Client, Transport, UnauthorizedError } = sdk();
     const state = crypto.randomBytes(16).toString("hex");
     const wait = await listenForCode({ state, timeoutMs: ctx.timeoutMs });
+    // the Settings row's Cancel: the wait for the browser ends as a cancelled sign-in (the stored one stays)
+    if (ctx.signal) {
+        if (ctx.signal.aborted) wait.close();
+        else ctx.signal.addEventListener("abort", () => wait.close(), { once: true });
+    }
     const provider = new Provider({ keys: stage, server, redirect: wait.redirect, state, open: async (url) => { await ctx.openExternal(url); } });
     const connect = async () => {
         const transport = new Transport(new URL(server.url), { authProvider: provider, fetch: fetchImpl });

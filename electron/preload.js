@@ -121,6 +121,11 @@ contextBridge.exposeInMainWorld("scumble", {
         edit: (request) => ipcRenderer.invoke("provider:edit", request),
         layout: (shape) => ipcRenderer.invoke("provider:layout", shape),
         balance: (id) => ipcRenderer.invoke("provider:balance", id),
+        status: (id) => ipcRenderer.invoke("providers:status", id),
+        signIn: (id) => ipcRenderer.invoke("providers:signIn", id),
+        cancelSignIn: (id) => ipcRenderer.invoke("providers:cancelSignIn", id),
+        signOut: (id) => ipcRenderer.invoke("providers:signOut", id),
+        cutout: (id, image) => ipcRenderer.invoke("providers:cutout", { id, image }),
     },
     llm: {
         list: () => ipcRenderer.invoke("llm:list"),

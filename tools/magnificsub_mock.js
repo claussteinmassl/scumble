@@ -1,7 +1,10 @@
 // A loopback stand-in for Magnific's MCP server and its OAuth realm, for tools/magnificsub_test.js and for a run of
 // the app against settings.magnificsub.base = http://127.0.0.1:<port>:
-//   node tools/magnificsub_mock.js --port 5579
+//   node tools/magnificsub_mock.js --port 5579 [--app]
 // or, from a test: const mock = await require("./magnificsub_mock.js").start({ port: 0 });
+// --app (start({ app: true })), for the app gate (tools/magnificsub_test.py): every creation answers a picture the app
+// can decode (an upscale at the source's size times its scale, a retouch at the source's size, a new image of the asked
+// aspect, a cut-out whose right half is transparent), and GET /__mock/calls answers the tool calls so far.
 //
 // What it plays (the real shapes were measured by the spike of 2026-10-01, docs/PLAN_MAGNIFIC_SUB.md):
 //   GET  /.well-known/oauth-protected-resource      { resource, authorization_servers: [<base>/realm] }
@@ -88,6 +91,46 @@ function fakePng(w, h, tag) {
     return b;
 }
 
+// ---- decodable pictures (--app) ----------------------------------------------------------------------------------
+
+const CRC = (() => { const t = new Int32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c; } return t; })();
+function crc32(buf) { let c = -1; for (const b of buf) c = CRC[(c ^ b) & 255] ^ (c >>> 8); return (c ^ -1) >>> 0; }
+
+/** A real RGBA PNG of w x h; px(x, y) -> [r, g, b, a]. */
+function realPng(w, h, px) {
+    const zlib = require("node:zlib");
+    const raw = Buffer.alloc((w * 4 + 1) * h);
+    for (let y = 0; y < h; y++) {
+        const o = y * (w * 4 + 1);
+        for (let x = 0; x < w; x++) Buffer.from(px(x, y)).copy(raw, o + 1 + x * 4);
+    }
+    const chunk = (tag, data) => {
+        const len = Buffer.alloc(4); len.writeUInt32BE(data.length);
+        const body = Buffer.concat([Buffer.from(tag, "latin1"), data]);
+        const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(body));
+        return Buffer.concat([len, body, crc]);
+    };
+    const ihdr = Buffer.alloc(13);
+    ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 6;
+    return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", zlib.deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
+}
+
+/** The picture a creation answers with in --app mode, from its tool, its arguments and its source's bytes. */
+function appPicture(tool, args, source) {
+    const { imageSize } = require("../electron/main/providers/magnificsub_pictures.js");
+    const [sw, sh] = (source && imageSize(source)) || [256, 256];
+    if (tool === "images_upscale") {
+        const f = parseInt(String(args.scale || "2x"), 10) || 2;
+        return realPng(sw * f, sh * f, (x, y) => [40 + (x * 7) % 200, 90, 160 + (y * 3) % 90, 255]);
+    }
+    if (tool === "images_retouch") return realPng(sw, sh, () => [200, 60, 60, 255]);
+    if (tool === "images_remove_background") return realPng(sw, sh, (x) => [10, 200, 10, x < sw / 2 ? 255 : 0]);
+    const m = /(\d+)\D+(\d+)\s*$/.exec(String(args.aspectRatio || ""));
+    const a = m ? +m[1] / +m[2] : 1;
+    const w = a >= 1 ? 1024 : Math.round(1024 * a), h = a >= 1 ? Math.round(1024 / a) : 1024;
+    return realPng(w, h, (x, y) => [60, 60 + (x + y) % 120, 200, 255]);
+}
+
 function readBody(req) {
     return new Promise((resolve, reject) => {
         const parts = [];
@@ -114,7 +157,7 @@ function json(res, status, body, headers = {}) {
  *           originals[].url), credits (what a creation costs, default 90), result (the bytes every finished creation
  *           of an images_* tool downloads as; default a small PNG tagged "RESULT <id>")
  */
-async function start({ port = 0 } = {}) {
+async function start({ port = 0, app = false } = {}) {
     const { Server } = require("@modelcontextprotocol/sdk/server/index.js");
     const { StreamableHTTPServerTransport } = require("@modelcontextprotocol/sdk/server/streamableHttp.js");
     const { ListToolsRequestSchema, CallToolRequestSchema } = require("@modelcontextprotocol/sdk/types.js");
@@ -272,6 +315,7 @@ async function start({ port = 0 } = {}) {
                 if (args.maskCreationIdentifier && !known(args.maskCreationIdentifier)) return { error: `creation ${args.maskCreationIdentifier} not found` };
                 if (name === "images_retouch" && (args.mode || "replace") === "replace" && !args.prompt) return { error: "prompt is required for replace" };
                 const c = creationOf(name, args, triggerOf(args.prompt, src && known(src).fileName));
+                if (app) c.bytes = appPicture(name, args, src && known(src).bytes);
                 return { creation: { identifier: c.identifier, status: "processing", expectTime: 20, tool: name, credits: script.credits }, instruction: "Call creations_wait with the identifier." };
             }
         }
@@ -348,6 +392,7 @@ async function start({ port = 0 } = {}) {
                 res.writeHead(200, { "content-type": "image/png" });
                 return res.end(c.bytes || (script.result && Buffer.from(script.result)) || fakePng(64, 48, "RESULT " + id));
             }
+            if (app && req.method === "GET" && u.pathname === "/__mock/calls") return json(res, 200, calls);
             if (u.pathname === "/") return await mcpRoute(req, res);
             json(res, 404, { error: "not found" });
         } catch (err) {
@@ -368,5 +413,5 @@ module.exports = { start, validate, toolDefs };
 if (require.main === module) {
     const i = process.argv.indexOf("--port");
     const port = i > 0 ? Number(process.argv[i + 1]) : 0;
-    start({ port }).then((m) => console.log(`magnificsub mock on ${m.base} (settings.magnificsub.base)`));
+    start({ port, app: process.argv.includes("--app") }).then((m) => console.log(`magnificsub mock on ${m.base} (settings.magnificsub.base)`));
 }

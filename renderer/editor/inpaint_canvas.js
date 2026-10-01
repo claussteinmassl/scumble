@@ -1106,7 +1106,10 @@ const CUTOUT_BACKENDS = [
 
 function availableCutoutBackends() {
     const types = host.nodeTypes();
-    return [...host.cutoutBackends(), ...CUTOUT_BACKENDS.filter((b) => b.needs.every((n) => !!types[n]))];
+    // a host backend that spends credits (`paid`: a signed-in subscription) comes last, so it is never the default
+    // while a free one is there
+    const own = host.cutoutBackends();
+    return [...own.filter((b) => !b.paid), ...CUTOUT_BACKENDS.filter((b) => b.needs.every((n) => !!types[n])), ...own.filter((b) => b.paid)];
 }
 
 const isSettingOutput = (o) => !!(o && typeof o.name === "string" && /^setting_\d+$/.test(o.name));

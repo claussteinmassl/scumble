@@ -968,6 +968,14 @@ function installIpc() {
     // where each picture of a request of this shape goes and what the model calls it (docs/PLAN_REFS.md C3)
     ipcMain.handle("provider:layout", (_e, shape) => providers.layout(shape));
     ipcMain.handle("provider:balance", (_e, id) => providers.balance(id));
+    // a provider that signs in instead of taking a key (Magnific (subscription)): the Settings row's buttons; a test
+    // sign-in against the loopback mock opens no browser (providers/index.js signIn)
+    ipcMain.handle("providers:status", (_e, id) => providers.authStatus(id));
+    ipcMain.handle("providers:signIn", (_e, id) => providers.signIn(id, { openExternal: (url) => shell.openExternal(url), version: app.getVersion() }));
+    ipcMain.handle("providers:cancelSignIn", (_e, id) => providers.cancelSignIn(id));
+    ipcMain.handle("providers:signOut", (_e, id) => providers.signOut(id));
+    // a provider's background removal (the editor's cutout backend "Magnific (subscription)")
+    ipcMain.handle("providers:cutout", (_e, { id, image }) => providers.cutout(id, image));
     // vision language models on the provider keys (prompt upsampling)
     ipcMain.handle("llm:list", () => llm.list());
     ipcMain.handle("llm:ask", (_e, req) => llm.ask(req));

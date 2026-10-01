@@ -341,4 +341,92 @@ async function balance(id) {
     }
 }
 
-module.exports = { edit, layout, balance, describeAll, textProviders, upscaleProviders, PROVIDERS };
+/**
+ * A background removal through a provider that has one (`cutout(png, ctx)`; Magnific (subscription) today): the
+ * picture as PNG in, a grey PNG (white = keep) out, with `info.credits` when the provider names them.
+ */
+async function cutout(id, image) {
+    const p = Object.prototype.hasOwnProperty.call(PROVIDERS, String(id || "")) ? PROVIDERS[String(id)] : null;
+    if (!p || typeof p.cutout !== "function") throw new Error(`${(p && p.label) || id} has no background removal in Scumble.`);
+    let key = "";
+    if (typeof p.ready === "function") checkReady(p);
+    else {
+        key = keys.get(keyNameOf(id, p));
+        if (!key) throw new Error(`No API key for ${p.label}. Add it under Settings › API providers.`);
+    }
+    const t0 = Date.now();
+    try {
+        // a sign-in provider reads its tokens from the same store and settings its ready() was asked with
+        const ctx = typeof p.ready === "function" ? { ...contextFor(id, p, key), ...readyContext() } : contextFor(id, p, key);
+        const out = await p.cutout(toBuffer(image), ctx);
+        log.record({ level: "info", source: id, message: `${p.label} cutout ok`, detail: { seconds: (Date.now() - t0) / 1000, width: out.width, height: out.height, info: out.info || null } });
+        return { ...out, seconds: (Date.now() - t0) / 1000 };
+    } catch (err) {
+        log.record({ level: "warn", source: id, message: `${p.label} cutout failed: ${err && err.message || err}` });
+        throw err;
+    }
+}
+
+// ---- providers that sign in (auth: "oauth") -----------------------------------------------------------------------
+//
+// The Settings row's Sign in / Cancel / Sign out. A sign-in waits for the browser (up to the adapter's timeout); one
+// at a time per provider. With the settings on a provider's loopback mock (`isTest`), no browser opens: the
+// authorization URL waits in authStatus().url for a test to follow, so a gate can sign in without a person.
+
+const pendingSignIns = new Map();   // id -> { abort: AbortController, url: string|null }
+
+function oauthProvider(id) {
+    const p = Object.prototype.hasOwnProperty.call(PROVIDERS, String(id || "")) ? PROVIDERS[String(id)] : null;
+    if (!p || p.auth !== "oauth") throw new Error(`${(p && p.label) || id} does not sign in; it takes an API key.`);
+    return p;
+}
+
+/** { signedIn, account?, pending?, url? } from the store alone; `url` only for a test sign-in that waits. */
+function authStatus(id) {
+    const p = oauthProvider(id);
+    const st = p.status(readyContext());
+    const pend = pendingSignIns.get(String(id));
+    if (!pend) return st;
+    return pend.url ? { ...st, pending: true, url: pend.url } : { ...st, pending: true };
+}
+
+/** Signs in through the browser (`openExternal(url)`, main's shell.openExternal); resolves to authStatus(). */
+async function signIn(id, { openExternal, version } = {}) {
+    const p = oauthProvider(id);
+    id = String(id);
+    if (pendingSignIns.has(id)) throw new Error(`${p.label}: a sign-in is already waiting for the browser.`);
+    const s = settings.get();
+    const test = !!(typeof p.isTest === "function" && p.isTest(s));
+    const pend = { abort: new AbortController(), url: null };
+    pendingSignIns.set(id, pend);
+    try {
+        const open = test ? async (url) => { pend.url = String(url); } : async (url) => { await openExternal(url); };
+        await p.signIn({ keys, settings: s, openExternal: open, version, signal: pend.abort.signal });
+    } catch (err) {
+        log.record({ level: "warn", source: id, message: `${p.label} sign-in failed: ${err && err.message || err}` });
+        throw err;
+    } finally {
+        pendingSignIns.delete(id);
+    }
+    // a cached session holds the old client and tokens
+    if (typeof p.resetSession === "function") await p.resetSession();
+    return authStatus(id);
+}
+
+/** Ends a sign-in that waits for the browser (the stored sign-in, if any, stays). */
+function cancelSignIn(id) {
+    oauthProvider(id);
+    const pend = pendingSignIns.get(String(id));
+    if (pend) pend.abort.abort();
+    return !!pend;
+}
+
+/** Forgets the sign-in (tokens and the registered client); resolves to authStatus(). */
+async function signOut(id) {
+    const p = oauthProvider(id);
+    p.signOut(readyContext());
+    if (typeof p.resetSession === "function") await p.resetSession();
+    return authStatus(id);
+}
+
+module.exports = { edit, layout, balance, cutout, describeAll, textProviders, upscaleProviders, authStatus, signIn, cancelSignIn, signOut, PROVIDERS };

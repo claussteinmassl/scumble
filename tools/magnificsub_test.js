@@ -851,6 +851,73 @@ async function main() {
             }
         });
 
+        await section("23b. providers/index.js: sign in, cancel, sign out and the cutout (the IPC of the Settings row)", async () => {
+            const idxPath = path.join(ROOT, "electron", "main", "providers", "index.js");
+            const store = fakeKeys();
+            // nativeImage played by the fake codec (index.js's bitmap / fromBitmap go through it)
+            const nativeImage = {
+                createFromBuffer: (b) => { const bm = codec.bitmap(b); return { isEmpty: () => !bm, getSize: () => ({ width: bm.width, height: bm.height }), toBitmap: () => Buffer.from(bm.data) }; },
+                createFromBitmap: (data, size) => ({ toPNG: () => codec.fromBitmap({ width: size.width, height: size.height, data }) }),
+            };
+            const logged = [];
+            const orig = Module._load;
+            Module._load = function (request, parent, ...rest) {
+                if (request === "electron") return { nativeImage };
+                if (parent && parent.filename === idxPath) {
+                    if (request === "../log") return { record: (e) => logged.push(e) };
+                    if (request === "../keys") return { get: store.get, set: store.set, clear: store.clear, describe: (id) => ({ name: id, set: !!store.get(id) }) };
+                    if (request === "../settings") return { get: () => settings };
+                }
+                return orig.call(this, request, parent, ...rest);
+            };
+            let index;
+            try {
+                delete require.cache[idxPath];
+                index = require(idxPath);
+            } finally { Module._load = orig; }
+            const waitFor = async (fn) => { for (let i = 0; i < 200; i++) { const v = fn(); if (v) return v; await new Promise((r) => setTimeout(r, 10)); } return null; };
+            check("authStatus: signed out, nothing pending", eq(index.authStatus("magnificsub"), { signedIn: false }));
+            const e0 = await throws(() => Promise.resolve().then(() => index.authStatus("magnific")));
+            check("a key provider does not sign in", /does not sign in/.test(e0 || ""), e0);
+
+            // a test sign-in: no browser opens (openExternal is never called), the URL waits in authStatus for the test
+            const opened = [];
+            const run = index.signIn("magnificsub", { openExternal: async (u) => { opened.push(u); } });
+            const pend = await waitFor(() => { const s = index.authStatus("magnificsub"); return s.url ? s : null; });
+            check("while it waits: pending, with the mock's authorization URL", !!pend && pend.pending === true && pend.signedIn === false && pend.url.startsWith(mock.base + "/realm/auth?"), short(pend));
+            const e1 = await throws(() => index.signIn("magnificsub", { openExternal: async () => {} }));
+            check("... a second sign-in at the same time is refused", /already waiting for the browser/.test(e1 || ""), e1);
+            await browser()(pend.url);
+            const st = await run;
+            remember(store);
+            check("following the URL signs in; openExternal was never called", eq(st, { signedIn: true, account: "Mock Plan" }) && opened.length === 0 && eq(index.authStatus("magnificsub"), { signedIn: true, account: "Mock Plan" }), short(st));
+            check("describeAll: the row reads signed in", index.describeAll().find((x) => x.id === "magnificsub").signedIn === true);
+
+            // the cutout through index.js (the editor's backend): a grey PNG (white = keep), with the credits, logged
+            mock.script.result = codec.fromBitmap({ width: 2, height: 1, data: Buffer.from([1, 2, 3, 0, 1, 2, 3, 255]) });
+            let cut;
+            try { cut = await index.cutout("magnificsub", new Uint8Array(pngBytes(200, "LAYER"))); } finally { mock.script.result = null; }
+            const g = codec.bitmap(cut.bytes);
+            check("cutout: the grey mask at the answer's size with info.credits", g && g.width === 2 && eq([...g.data], [0, 0, 0, 255, 255, 255, 255, 255]) && cut.info.credits === 90 && cut.seconds >= 0, short(cut && cut.info));
+            check("... and an info line in the log", logged.some((e) => e.level === "info" && e.message === "Magnific (subscription) cutout ok"));
+            const e2 = await throws(() => index.cutout("magnific", new Uint8Array(4)));
+            check("a provider without a cutout is refused", /has no background removal/.test(e2 || ""), e2);
+
+            // a second sign-in cancelled from the row: the stored sign-in stays
+            const before = store.data.magnificsub;
+            const run2 = index.signIn("magnificsub", {});
+            await waitFor(() => index.authStatus("magnificsub").url);
+            check("cancel: true while one waits", index.cancelSignIn("magnificsub") === true);
+            const e3 = await throws(() => run2);
+            check("... the sign-in ends as cancelled, the stored one is kept, nothing pends", /the sign-in was cancelled/.test(e3 || "") && store.data.magnificsub === before && eq(index.authStatus("magnificsub"), { signedIn: true, account: "Mock Plan" }), e3);
+            check("cancel with nothing waiting: false", index.cancelSignIn("magnificsub") === false);
+
+            const out = await index.signOut("magnificsub");
+            check("sign out: signed out, and keys no longer hold magnificsub", eq(out, { signedIn: false }) && !("magnificsub" in store.data));
+            const e4 = await throws(() => index.cutout("magnificsub", new Uint8Array(pngBytes(50, "L"))));
+            check("signed out: the cutout says to sign in, nothing sent", e4 === "Sign in to Magnific (subscription) first: Settings › API providers.", e4);
+        });
+
         await section("24. the four recipes", async () => {
             const origLoad = Module._load;
             Module._load = function (request, ...rest) {

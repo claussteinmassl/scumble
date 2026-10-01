@@ -99,6 +99,15 @@ async function providerEdit(request) {
     }
 }
 
+/**
+ * " (90 credits)" after a run of Magnific (subscription), whose answer names the plan's credits it used; "" for every
+ * other provider and for an answer without them (the other providers' status lines stay as they were).
+ */
+function creditsNote(provider, res) {
+    const c = res && res.info && res.info.credits;
+    return provider === "magnificsub" && c != null && Number.isFinite(+c) ? ` (${+c} credit${+c === 1 ? "" : "s"})` : "";
+}
+
 /** "a", "a and b", "a, b and c" */
 function listWords(items) {
     return items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
@@ -1370,6 +1379,8 @@ export const host = {
         }).filter(Boolean);
         if (sentAs.length) editor.setStatus(`${editor.status} Named in the prompt: ${sentAs.join(", ")}.`);
         if (editor.lastRunNotes.length) editor.setStatus(`${editor.status} ${editor.lastRunNotes.join(" ")}`);
+        const credits = creditsNote(r.provider, res);
+        if (credits) editor.setStatus(editor.status + credits);
         return { provider: r.provider, seconds: res.seconds, x, y, w, h, transparent: !!info.keepAlpha, cutout, prompt: editor.lastSentPrompt, refs: res.refs || [], pairs: named.pairs, notes: editor.lastRunNotes, info: res.info || null };
     },
 
@@ -1465,7 +1476,7 @@ export const host = {
             const ref = await this.uploadResult(fin.blob, `n${editor.node.id}_upscale_${stamp}.png`);
             await editor.addResults([{ filename: ref.filename, subfolder: ref.subfolder, type: ref.type, x, y, width: w, height: h, align: fin.align, canvas_node: editor.node.id, provider: r.provider }]);
             const got = res.info && res.info.width ? ` (${res.info.width} × ${res.info.height} came back)` : "";
-            editor.setStatus(`${label} upscaled the selection in ${Math.round(res.seconds)} s${got}; it is fitted back into ${w} × ${h} as a new layer.${texts.note ? " " + texts.note : ""}`);
+            editor.setStatus(`${label} upscaled the selection in ${Math.round(res.seconds)} s${got}; it is fitted back into ${w} × ${h} as a new layer.${texts.note ? " " + texts.note : ""}${creditsNote(r.provider, res)}`);
             return { scope, provider: r.provider, recipe: r.id, factor, seconds: res.seconds, x, y, w, h, info: res.info || null, note: texts.note };
         }
         // the whole picture: the answer at its own size, stretched to the document's aspect if the model rounded
@@ -1483,7 +1494,7 @@ export const host = {
         await editor.resizeImage(nw, nh, { base: nb });
         nb.width = nb.height = 0;
         if (editor.width !== nw || editor.height !== nh) throw new Error(editor.status || "the upscaled picture could not be taken");
-        editor.setStatus(`${label} upscaled the picture in ${Math.round(res.seconds)} s: ${W} × ${H} is now ${nw} × ${nh}, every layer scaled along (Ctrl+Z takes it back).${texts.note ? " " + texts.note : ""}`);
+        editor.setStatus(`${label} upscaled the picture in ${Math.round(res.seconds)} s: ${W} × ${H} is now ${nw} × ${nh}, every layer scaled along (Ctrl+Z takes it back).${texts.note ? " " + texts.note : ""}${creditsNote(r.provider, res)}`);
         return { scope, provider: r.provider, recipe: r.id, factor, seconds: res.seconds, from: [W, H], width: nw, height: nh, answered: [aw, ah], info: res.info || null, note: texts.note };
     },
 
@@ -1580,7 +1591,7 @@ export const host = {
         }).filter(Boolean);
         const kept = swap && swap.kept ? swap.kept : 0, dropped = swap && swap.dropped ? swap.dropped : 0;
         const stay = kept ? ` The reference layer${kept > 1 ? "s stay" : " stays"}${dropped ? `, ${dropped} other layer${dropped > 1 ? "s were" : " was"} replaced` : ""}.` : "";
-        editor.setStatus(`${label} answered after ${Math.round(res.seconds)} s: a new ${c.width} × ${c.height} base image${cutout ? (gotAlpha ? " with a transparent background" : " (the model returned no transparency)") : ""}.${sentAs.length ? ` Named in the prompt: ${sentAs.join(", ")}.` : ""}${stay}${notes.length ? " " + notes.join(" ") : ""}`);
+        editor.setStatus(`${label} answered after ${Math.round(res.seconds)} s: a new ${c.width} × ${c.height} base image${cutout ? (gotAlpha ? " with a transparent background" : " (the model returned no transparency)") : ""}.${sentAs.length ? ` Named in the prompt: ${sentAs.join(", ")}.` : ""}${stay}${notes.length ? " " + notes.join(" ") : ""}${creditsNote(r.provider, res)}`);
         const labels = snap.labels;
         return {
             provider: r.provider, model: request.model, seconds: res.seconds, width: c.width, height: c.height, transparent: !!gotAlpha,
@@ -2420,9 +2431,25 @@ export const host = {
         return !!this.sam2Model();
     },
 
-    /** Cutout backends in the shape of the editor's CUTOUT_BACKENDS entries (id "app:<model>"). */
+    /** The providers that sign in (auth "oauth") and are signed in; the shell sets it (setSignedIn) from main's list. */
+    signedIn: new Set(),
+
+    /** The shell's loadProviders(): which sign-in providers are signed in; the editors' cutout lists follow. */
+    setSignedIn(ids) {
+        this.signedIn = new Set(ids || []);
+        for (const ed of this._editors) { try { ed.refreshCutoutBackends(); } catch (_) { /* not built yet */ } }
+    },
+
+    /**
+     * Cutout backends in the shape of the editor's CUTOUT_BACKENDS entries (id "app:<model>"), and Magnific
+     * (subscription) while signed in: it spends the plan's credits, so it is marked `paid` and the editor lists it
+     * last (never the default while another backend is there).
+     */
     cutoutBackends() {
-        return this.presentHelpers("matting").map((m) => ({ id: "app:" + m.id, label: `${m.label} (in-app)`, inApp: true, model: m.id, needs: [] }));
+        /** @type {any[]} */
+        const own = this.presentHelpers("matting").map((m) => ({ id: "app:" + m.id, label: `${m.label} (in-app)`, inApp: true, model: m.id, needs: [] }));
+        if (this.signedIn.has("magnificsub")) own.push({ id: "magnificsub", label: "Magnific (subscription)", inApp: true, provider: "magnificsub", paid: true, needs: [] });
+        return own;
     },
 
     /** The Remove tool is in the app (LaMa in-app, PLAN_0_1_31 §5 step 3); the node has none. */
@@ -2617,6 +2644,7 @@ export const host = {
      * size that applyCutoutImage scales onto the layer.
      */
     async cutoutInApp(editor, layer, backend) {
+        if (backend.provider) return this.cutoutByProvider(editor, layer, backend);
         const model = (this.helpers.models || []).find((m) => m.id === backend.model);
         if (!model || !model.present) throw new Error(`${backend.label} is not downloaded any more (Settings › Helpers).`);
         // like the ComfyUI path: the layer's own pixels, transparent parts on black
@@ -2634,6 +2662,52 @@ export const host = {
         const hint = this.slowHelperHint(res);
         if (hint) setTimeout(() => editor.setStatus(editor.status + hint), 50);   // after applyCutoutImage's own status line
         return c;
+    },
+
+    /**
+     * Background removal of one layer through a provider (Magnific (subscription)): the layer's own pixels as a PNG
+     * (transparent parts on black, as the other paths send them; the long side at most 2048 px), the provider's grey
+     * answer (white = keep) back as a canvas that applyCutoutImage scales onto the layer.
+     */
+    async cutoutByProvider(editor, layer, backend) {
+        const px = layer.px;
+        const pw = px.width, ph = px.height;
+        const s = Math.min(1, 2048 / Math.max(pw, ph));
+        const cw = Math.max(1, Math.round(pw * s)), ch = Math.max(1, Math.round(ph * s));
+        const c = document.createElement("canvas");
+        c.width = cw; c.height = ch;
+        const ctx = c.getContext("2d");
+        ctx.fillStyle = "#000000"; ctx.fillRect(0, 0, cw, ch);
+        ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+        if (editor.tileMode && typeof px.primeRegion === "function") {
+            const job = await px.primeRegion([0, 0, pw, ph], editor.tileLevel(s));
+            try {
+                ctx.setTransform(cw / pw, 0, 0, ch / ph, 0, 0);
+                editor.drawTilesInto(ctx, px, 0, 0, pw, ph, { x: 0, y: 0, w: pw, h: ph, sx: s, sy: s });
+            } finally {
+                job.release();
+            }
+        } else {
+            ctx.drawImage(px.toCanvas(), 0, 0, cw, ch);
+        }
+        const blob = await new Promise((resolve) => c.toBlob(resolve, "image/png"));
+        if (!blob) throw new Error("the layer could not be encoded as PNG");
+        const image = new Uint8Array(await blob.arrayBuffer());
+        let res;
+        try {
+            res = await window.scumble.providers.cutout(backend.provider, image);
+        } catch (err) {
+            throw new Error(String((err && err.message) || err).replace(/^Error invoking remote method '[^']+': (Error: )?/, ""));
+        }
+        const bmp = await createImageBitmap(new Blob([res.bytes], { type: res.mime || "image/png" }));
+        const out = document.createElement("canvas");
+        out.width = bmp.width; out.height = bmp.height;
+        out.getContext("2d").drawImage(bmp, 0, 0);
+        bmp.close();
+        // applyCutoutImage writes its own line after this returns; the credits go on afterwards (as slowHelperHint does)
+        const credits = creditsNote(backend.provider, res);
+        if (credits) setTimeout(() => editor.setStatus(editor.status + credits), 50);
+        return out;
     },
 
     /**

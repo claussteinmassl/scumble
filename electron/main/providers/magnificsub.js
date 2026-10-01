@@ -566,6 +566,8 @@ module.exports = {
     // the sign-in, for the IPC handlers (call resetSession() after either)
     signIn: auth.signIn,
     signOut: auth.signOut,
+    // whether the settings point at the loopback mock: a test sign-in opens no browser (index.js signIn)
+    isTest: (settings) => auth.serverOf(settings).test,
     // the session
     Session, sessionFor, resetSession,
     MAX_UPLOAD, WAIT_SECONDS, SIGN_IN_FIRST,

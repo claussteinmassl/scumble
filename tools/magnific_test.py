@@ -124,7 +124,8 @@ await wait(300);
 const options = {};
 let keyRow = "";
 try {
-    const rows = Array.from(document.querySelectorAll(".shell-provider")).filter((x) => /^Magnific/.test(x.textContent));
+    // the REST provider's row only (Magnific (subscription) has a sign-in row of its own, tools/magnificsub_test.py)
+    const rows = Array.from(document.querySelectorAll(".shell-provider")).filter((x) => /^Magnific(?! \\(subscription\\))/.test(x.textContent));
     keyRow = rows.length ? rows[0].textContent : "";
     if (rows.length !== 1 || !/no key/.test(keyRow) || /check balance/.test(keyRow)) throw new Error("the Magnific key rows: " + rows.map((x) => x.textContent).join(" | "));
     for (const id of ["seedream_5_pro", "gpt_image_2", "mystic"]) {
@@ -143,7 +144,7 @@ await shell.openSettings();
 await wait(300);
 const sel = document.querySelector('.shell-recipe[data-id="seedream_5_pro"] select');
 const after = sel && sel.options[sel.options.length - 1].textContent;
-const withKey = (rowOf(/^Magnific/) || {}).textContent || "";
+const withKey = (rowOf(/^Magnific(?! \\(subscription\\))/) || {}).textContent || "";
 document.getElementById("shell-settings").close();
 if (after !== "Magnific" || !/key set/.test(withKey)) throw new Error("with the key: the option " + after + ", the row " + withKey);
 return { keyRow: keyRow.slice(0, 60), options, after, edits: edits.length, text: text.length };

@@ -11,7 +11,7 @@
 # ($SCUMBLE_GATES/nodecopy), so the real node repo is never written.
 #
 # A gate is a tools/ script name without .py (editor, composite, pixels, shape, brush, commands,
-# film, glb, ailabel, size, transparent, generate, log, llm, toapis, openrouter, ark, comfyrouter, oxen, magnific, recipes, assistant, mcp, smoke,
+# film, glb, ailabel, size, transparent, generate, log, llm, toapis, openrouter, ark, comfyrouter, oxen, magnific, magnificsub, recipes, assistant, mcp, smoke,
 # node, perf:<args>).
 # Gate "toapis" (tools/toapis_test.py) runs tools/toapis_test.js in plain Node first, then the app against
 # tools/toapis_mock.py; it needs no ToAPIs key and refuses a profile that holds one. Gate "openrouter"
@@ -21,7 +21,10 @@
 # holds a Comfy Cloud key, the key Comfy Router runs on), and gate "oxen" (tools/oxen_test.py, Oxen.ai) with
 # tools/oxen_test.js and tools/oxen_mock.py (it refuses a profile that holds an Oxen key), and gate "magnific"
 # (tools/magnific_test.py) with tools/magnific_test.js and tools/magnific_mock.py (it refuses a profile that holds a
-# Magnific key). Gate "recipes"
+# Magnific key). Gate "magnificsub" (tools/magnificsub_test.py, Magnific (subscription)) runs tools/magnificsub_test.js
+# first, then the app against `node tools/magnificsub_mock.js --app`: the Settings row's sign-in (the mock's
+# authorization URL followed by the gate, no browser), the four recipes, one run per verb and the cutout backend; it
+# refuses a profile that holds a magnificsub sign-in. Gate "recipes"
 # (tools/recipes_test.py) runs tools/recipes_test.js in plain Node first (the shipped recipes' settings slots and
 # the importer), then the import through the app's Settings dialog; it needs no key and no ComfyUI. Gate "assistant"
 # (tools/assistant_test.py) runs tools/assistant_test.js in plain Node first, then the in-app assistant against

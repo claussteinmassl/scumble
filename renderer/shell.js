@@ -451,8 +451,13 @@ function providerKeyState(r) {
         return host.presentHelpers("inpaint").some((m) => m.id === r.model) ? { ok: true } : { ok: false, text: keyText("the LaMa model is not downloaded yet: Settings (Ctrl+,) › Helpers (in-app models)") };
     }
     if (!p) return r.provider === "loopback" ? { ok: true } : { ok: false, text: `unknown provider "${r.provider}"` };
+    // a provider that signs in (auth "oauth") counts its sign-in where the others count their key
+    if (p.auth === "oauth") return p.signedIn ? { ok: true } : { ok: false, text: keyText(`not signed in to ${p.label} yet: Settings (Ctrl+,) › API providers`) };
     return p.key && p.key.set ? { ok: true } : { ok: false, text: keyText(`no ${p.label} key yet: Settings (Ctrl+,) › API providers`) };
 }
+
+/** Whether a provider can run: its key stored, or (auth "oauth") signed in. */
+const providerReady = (p) => !!(p && (p.auth === "oauth" ? p.signedIn : p.key && p.key.set));
 
 async function rememberProvider(recipeId, providerId) {
     const map = { ...(settings.recipeProviders || {}), [recipeId]: providerId };
@@ -509,17 +514,22 @@ function syncRecipeRows() {
     }
 }
 
-/** Provider name for the recipe select; "(no key)" marks a provider with no API key stored yet. */
+/**
+ * Provider name for the recipe select; "(no key)" marks a provider with no API key stored yet, "(not signed in)" one
+ * that signs in (auth "oauth") and is not.
+ */
 function providerOptionLabel(pid) {
     const p = providers.find((x) => x.id === pid);
-    return providerLabel(pid) + (p && !(p.key && p.key.set) ? " (no key)" : "");
+    return providerLabel(pid) + (p && !providerReady(p) ? (p.auth === "oauth" ? " (not signed in)" : " (no key)") : "");
 }
 
 function recipeMeta(r) {
     if (r.kind !== "provider") return `ComfyUI · ${r.mode || "local"} · ${Object.keys(r.prompt || {}).length} nodes`;
     const v = resolveRecipe(r);
     const ks = providerKeyState(v);
-    return `${v.model || ""}${ks && !ks.ok ? (v.provider === "inapp" ? " · model not downloaded" : " · no key") : ""}`;
+    const p = providers.find((x) => x.id === v.provider);
+    const missing = v.provider === "inapp" ? " · model not downloaded" : (p && p.auth === "oauth" ? " · not signed in" : " · no key");
+    return `${v.model || ""}${ks && !ks.ok ? missing : ""}`;
 }
 
 function renderRecipeList() {
@@ -597,13 +607,112 @@ ui.recipeFolder.addEventListener("click", () => window.scumble.recipes.openFolde
 
 async function loadProviders() {
     providers = await window.scumble.providers.list();
+    // the editor's cutout list offers a signed-in provider's background removal (host.cutoutBackends)
+    host.setSignedIn(providers.filter((p) => p.auth === "oauth" && p.signedIn).map((p) => p.id));
+}
+
+// the last sign-in error of a provider, shown once in its row after the row is drawn again
+const authErrors = new Map();
+
+/** After a sign-in or a sign-out: the lists, the rows, the recipe note and the LLM list read the new state. */
+async function authChanged() {
+    await loadProviders();
+    await renderProviders();
+    selectRecipe(ui.recipe.value);
+    host.refreshLLMs();
+}
+
+const ipcText = (err) => String(err && err.message || err).replace(/^Error invoking remote method '[^']*': (Error: )?/, "");
+
+/** "check balance" and the place its answer goes, for a key row with a key and a signed-in row. */
+function balanceLink(p, state) {
+    // a query of what the key has left (ToAPIs: GET /v1/balance, free; OpenRouter: GET /api/v1/key); it also shows the key works
+    state.append(" · ");
+    const b = document.createElement("a");
+    b.href = "#"; b.textContent = "check balance"; b.className = "shell-balance";
+    const out = document.createElement("span");
+    out.className = "shell-balance-out";
+    b.addEventListener("click", async (e) => {
+        e.preventDefault();
+        out.textContent = " checking ...";
+        try {
+            const r = await window.scumble.providers.balance(p.id);
+            // a provider may answer in words (Magnific (subscription): "1000 credits (Plan)"); `note` says what the
+            // number is where it is not the account's balance (OpenRouter: the key's own limit)
+            out.textContent = typeof r === "string" ? ` ${r}` : r.unlimited ? " unlimited" : (r.usd != null ? ` $${r.usd.toFixed(2)} left${r.note ? ` (${r.note})` : ""}` : (r.note ? ` ${r.note}` : " no balance in the answer"));
+        } catch (err) {
+            out.textContent = " " + ipcText(err);
+        }
+    });
+    state.appendChild(b);
+    state.appendChild(out);
+}
+
+/**
+ * The row of a provider that signs in instead of taking a key (auth "oauth"): its hint where a key row has the input,
+ * one button (Sign in, Cancel while the browser is open, Sign out) and the state below. keys.js's hint of the stored
+ * sign-in is never shown: it is the tail of a JSON value, not a key.
+ */
+function oauthRow(p, st) {
+    const row = document.createElement("div");
+    row.className = "shell-provider shell-provider-oauth";
+    row.dataset.id = p.id;
+    const label = document.createElement("span");
+    label.textContent = p.label;
+    row.appendChild(label);
+    const hint = document.createElement("span");
+    hint.className = "shell-note";
+    hint.textContent = p.keyHint || "";
+    hint.title = p.keyHint || "";
+    row.appendChild(hint);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    const state = document.createElement("span");
+    state.className = "shell-key-state" + (st.signedIn && !st.pending ? " set" : "");
+    if (st.pending) {
+        btn.textContent = "Cancel";
+        state.textContent = "waiting for the browser…";
+        btn.addEventListener("click", async () => { btn.disabled = true; await window.scumble.providers.cancelSignIn(p.id); });
+    } else if (st.signedIn) {
+        btn.textContent = "Sign out";
+        state.textContent = st.account ? `signed in (${st.account})` : "signed in";
+        btn.addEventListener("click", async () => {
+            btn.disabled = true;
+            try { await window.scumble.providers.signOut(p.id); } catch (err) { authErrors.set(p.id, ipcText(err)); }
+            await authChanged();
+        });
+    } else {
+        btn.textContent = "Sign in";
+        state.textContent = "not signed in";
+        btn.addEventListener("click", async () => {
+            btn.disabled = true;
+            authErrors.delete(p.id);
+            const run = window.scumble.providers.signIn(p.id);
+            await renderProviders();   // the row reads "waiting for the browser…" with Cancel
+            try { await run; } catch (err) { authErrors.set(p.id, ipcText(err)); }
+            await authChanged();
+        });
+    }
+    row.appendChild(btn);
+    if (st.signedIn && !st.pending && p.balance) balanceLink(p, state);
+    const err = authErrors.get(p.id);
+    if (err && !st.pending) { state.append(" · " + err); authErrors.delete(p.id); }
+    row.appendChild(state);
+    return row;
 }
 
 async function renderProviders() {
     const info = await window.scumble.keys.list();
+    // the sign-in rows' state (a sign-in may be waiting for the browser) is read before the list is redrawn
+    const auth = new Map();
+    for (const p of providers) {
+        if (p.auth !== "oauth") continue;
+        try { auth.set(p.id, await window.scumble.providers.status(p.id)); } catch (_) { auth.set(p.id, { signedIn: !!p.signedIn }); }
+    }
     ui.providers.innerHTML = "";
     for (const p of providers) {
         if (p.sharesKey) continue;   // Comfy Router runs on the Comfy Cloud row's key
+        if (p.auth === "oauth") { ui.providers.appendChild(oauthRow(p, auth.get(p.id))); continue; }
         const row = document.createElement("div");
         row.className = "shell-provider";
         const label = document.createElement("span");
@@ -634,27 +743,7 @@ async function renderProviders() {
             a.href = "#"; a.textContent = "get a key"; a.addEventListener("click", (e) => { e.preventDefault(); window.scumble.openExternal(p.keyUrl); });
             state.appendChild(a);
         }
-        if (p.balance && k.set) {
-            // a query of what the key has left (ToAPIs: GET /v1/balance, free; OpenRouter: GET /api/v1/key); it also shows the key works
-            state.append(" · ");
-            const b = document.createElement("a");
-            b.href = "#"; b.textContent = "check balance"; b.className = "shell-balance";
-            const out = document.createElement("span");
-            out.className = "shell-balance-out";
-            b.addEventListener("click", async (e) => {
-                e.preventDefault();
-                out.textContent = " checking ...";
-                try {
-                    const r = await window.scumble.providers.balance(p.id);
-                    // `note` says what the number is where it is not the account's balance (OpenRouter: the key's own limit)
-                    out.textContent = r.unlimited ? " unlimited" : (r.usd != null ? ` $${r.usd.toFixed(2)} left${r.note ? ` (${r.note})` : ""}` : (r.note ? ` ${r.note}` : " no balance in the answer"));
-                } catch (err) {
-                    out.textContent = " " + String(err.message || err).replace(/^Error invoking remote method '[^']*': (Error: )?/, "");
-                }
-            });
-            state.appendChild(b);
-            state.appendChild(out);
-        }
+        if (p.balance && k.set) balanceLink(p, state);
         row.appendChild(state);
         ui.providers.appendChild(row);
     }
@@ -1047,8 +1136,8 @@ function genSyncNote() {
     }
     const v = (r.providers || {})[ui.genProvider.value] || {};
     const t = v.text || {};
-    const key = (providers.find((p) => p.id === ui.genProvider.value) || {}).key;
-    const missing = key && key.set ? "" : " No key stored for this provider yet.";
+    const gp = providers.find((p) => p.id === ui.genProvider.value) || {};
+    const missing = providerReady(gp) ? "" : (gp.auth === "oauth" ? " Not signed in to this provider yet." : " No key stored for this provider yet.");
     const sizes = genSizes();
     const range = sizes.length > 1 ? `long side ${sizes[0]} to ${sizes[sizes.length - 1]} px` : `long side ${sizes[0]} px`;
     ui.genNote.textContent = `${t.model || "?"} at ${providerLabel(ui.genProvider.value)}, ${range}. The size is a request, the model answers with what it supports.${missing}`;
@@ -1393,8 +1482,8 @@ function upSyncNote() {
     }
     if (!r || !v) { ui.upNote.textContent = ""; ui.upSizeNote.textContent = ""; ui.upGo.disabled = true; return; }
     const pid = ui.upProvider.value;
-    const key = (providers.find((p) => p.id === pid) || {}).key;
-    const missing = pid === "loopback" || (key && key.set) ? "" : ` No ${providerLabel(pid)} key stored yet: Settings › API providers.`;
+    const up = providers.find((p) => p.id === pid) || {};
+    const missing = pid === "loopback" || providerReady(up) ? "" : (up.auth === "oauth" ? ` Not signed in to ${providerLabel(pid)} yet: Settings › API providers.` : ` No ${providerLabel(pid)} key stored yet: Settings › API providers.`);
     ui.upNote.textContent = (r.description || "") + missing;
     const doc = ui.upScopeDoc.checked;
     const f = v.factor && !v.factor.fixed ? +ui.upFactor.value || v.factor.default : null;
