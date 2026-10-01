@@ -696,9 +696,10 @@ async function main() {
             const before = { calls: mock.calls.length, http: mock.http.length };
             const e = await throws(() => sub.upscale({ kind: "upscale", model: "images_upscale:precision", image: pngBytes(300, "X"), factor: 4, params: { mode: "Precision photo" } }, vctx));
             check("Precision photo at 4x is refused before anything is sent, naming its factors", e === "Magnific (subscription): Precision photo upscales by 2x only, not 4x." && mock.calls.length === before.calls && mock.http.length === before.http, e);
-            const refuses = (mode) => [4, 8, 16].every((f) => { try { sub._upscaleArgs({ model: "images_upscale:precision", factor: f, params: { mode } }); return false; } catch (_) { return true; } });
+            const T_UP = sub._tables.UPSCALE_MODES;
+            const refuses = (mode) => [4, 8, 16].every((f) => { try { sub._upscaleArgs({ model: `images_upscale:${T_UP[mode].kind}`, factor: f, params: { mode } }); return false; } catch (_) { return true; } });
             const takes = (model, mode) => [2, 4, 8, 16].every((f) => sub._upscaleArgs({ model, factor: f, params: { mode } }).scale === `${f}x`);
-            check("ultra-photo, ultra-denoiser and ultra refuse 4, 8 and 16; creative and ultra-sublime take 2, 4, 8 and 16",
+            check("ultra-photo, ultra-denoiser and ultra (each on its own kind) refuse 4, 8 and 16; creative and ultra-sublime take 2, 4, 8 and 16",
                 ["Precision photo", "Precision photo denoiser", "Precision v1"].every(refuses) && takes("images_upscale:creative", undefined) && takes("images_upscale:precision", "Precision sublime"));
 
             // every mode sends only the keys its catalog entry lists (catalog_images_upscale_modes_list.txt)
@@ -922,6 +923,24 @@ async function main() {
             const f = sub._fitFor;
             check("fit: within 3 % of the crop's shape stretched, else none", f(1536, 1024, 600, 400) === "stretch" && f(1024, 1024, 600, 400) === null && f(1000, 1010, 1, 1) === "stretch" && f(0, 1, 1, 1) === null);
 
+            // the Resolution row: images_generate's `resolution` (a string, the model's catalog values), Default sends none
+            const genSchema = mockLib.toolDefs().find((d) => d.name === "images_generate").inputSchema.properties;
+            check("images_generate's schema names the field `resolution`, a string", genSchema.resolution && genSchema.resolution.type === "string");
+            c0 = mock.calls.length;
+            await sub.edit({ kind: "edit", model: "seedream-5-pro", prompt: "make it night", image: crop, mask: crop, width: 600, height: 400, references: [], params: { resolution: "1.5k" } }, vctx);
+            await sub.generate({ kind: "text", model: "gpt-2", prompt: "a lighthouse", width: 1024, height: 1024, references: [], params: { resolution: "4k" } }, vctx);
+            await sub.generate({ kind: "text", model: "flux-2", prompt: "a lighthouse", width: 1024, height: 1024, references: [], params: { resolution: "Default" } }, vctx);
+            const ra = toolCalls(c0).filter((x) => x.tool === "images_generate").map((x) => x.args.resolution);
+            check("the Resolution row goes as `resolution` on an edit and a new image, valid against the schema; Default sends none (the model's own); no row sends none",
+                eq(ra, ["1.5k", "4k", undefined]) && !invalid(c0).length && e && !("resolution" in e.args), short(ra) + " " + invalid(c0).join(" | "));
+            const rb = { calls: mock.calls.length, http: mock.http.length };
+            const re = [await throws(() => sub.generate({ kind: "text", model: "seedream-5-pro", prompt: "x", width: 1024, height: 1024, references: [], params: { resolution: "4k" } }, vctx)),
+                await throws(() => sub.edit({ kind: "edit", model: "flux-2", prompt: "x", image: crop, mask: crop, width: 600, height: 400, references: [pngBytes(100, "R")], params: { resolution: "4k" } }, vctx)),
+                await throws(() => sub.generate({ kind: "text", model: "auto", prompt: "x", width: 1024, height: 1024, references: [], params: { resolution: "2k" } }, vctx))];
+            check("a resolution the model's catalog entry does not list, or any on a model that lists none, is refused before anything is sent",
+                re[0] === "Magnific (subscription): Seedream 5 Pro takes the resolution 1.5k and 2k, not 4k." && re[1] === "Magnific (subscription): Flux.2 Pro takes the resolution 1k and 2k, not 4k."
+                && re[2] === "Magnific (subscription): Auto takes no resolution; set Resolution to Default." && mock.calls.length === rb.calls && mock.http.length === rb.http, re.join(" | "));
+
             // the Original: references[0], named after the crop
             c0 = mock.calls.length;
             await sub.edit({ kind: "edit", model: "imagen-nano-banana-2", prompt: "fill it", image: crop, mask: crop, width: 600, height: 400, references: [pngBytes(200, "ORIGINAL"), pngBytes(200, "EDREF-C")], original: 1, params: {} }, vctx);
@@ -963,7 +982,16 @@ async function main() {
                 eq(U("creative", {}), U("images_upscale:creative", {})) && eq(U("creative", { preset: "Wild", engine: "Sharpy" }, 8), { mode: "creative", scale: "8x", presets: "wild", optimised: "StandardUltra", engine: "magnific_sharpy", prompt: "p" }), short(U("creative", {})));
             check("upscale: \"precision\" takes its mode from the Mode row (sublime when empty), as \"images_upscale:precision\" did",
                 eq(U("precision", {}), { mode: "ultra-sublime", scale: "2x" }) && eq(U("precision", { mode: "Precision photo", sharpness: 3 }), { mode: "ultra-photo", scale: "2x", sharpness: 3 })
-                && eq(U("precision", { mode: "ultra-denoiser" }), U("images_upscale:precision", { mode: "ultra-denoiser" })) && eq(U("precision", { mode: "Precision v1", precisionPreset: "Balanced" }), { mode: "ultra", scale: "2x", precisionPreset: "balanced" }));
+                && eq(U("precision", { mode: "ultra-denoiser" }), U("images_upscale:precision", { mode: "ultra-denoiser" })));
+            // Precision v1 (high HDR) is another model than the V2 flavours: its own recipe, "precision-v1", never a Mode of "precision"
+            const v1e = [await throws(() => sub.upscale({ model: "precision", image: pngBytes(100, "X"), factor: 2, params: { mode: "Precision v1" } }, vctx)),
+                await throws(() => sub.upscale({ model: "precision", image: pngBytes(100, "X"), factor: 2, params: { mode: "ultra" } }, vctx)),
+                await throws(() => sub.upscale({ model: "precision-v1", image: pngBytes(100, "X"), factor: 2, params: { mode: "Precision sublime" } }, vctx)),
+                await throws(() => sub.upscale({ model: "precision-v1", image: pngBytes(100, "X"), factor: 4, params: {} }, vctx))];
+            check("upscale: \"precision-v1\" sends Precision v1 with its keys; \"precision\" refuses v1 (label or slug), \"precision-v1\" refuses a V2 flavour and 4x, all before the upload",
+                eq(U("precision-v1", { precisionPreset: "Balanced" }), { mode: "ultra", scale: "2x", precisionPreset: "balanced" }) && eq(U("precision-v1", { ultraDetail: 9 }), { mode: "ultra", scale: "2x", ultraDetail: 9 })
+                && /Precision v1 is not a Precision mode/.test(v1e[0] || "") && /Precision v1 is not a Precision mode/.test(v1e[1] || "") && /Precision sublime is not a Precision v1 mode/.test(v1e[2] || "")
+                && v1e[3] === "Magnific (subscription): Precision v1 upscales by 2x only, not 4x." && mock.calls.length === before.calls && mock.http.length === before.http, v1e.join(" | "));
             check("upscale: a mode's slug as the model is the default, a Mode row of the same kind overrides it",
                 U("ultra-photo", {}).mode === "ultra-photo" && U("ultra-photo", { mode: "Precision sublime" }, 4).mode === "ultra-sublime" && sub._upscaleMode({ model: "ultra-photo" }).kind === "precision");
             const ue = [
@@ -1001,6 +1029,7 @@ async function main() {
                 if (`${e.name}${mark}` !== label) bad.push(`${label}: the catalog calls ${m.slug} "${e.name}"${mark}`);
                 if (!eq(e.aspects.filter((x) => x !== "auto"), m.aspects)) bad.push(`${label}: aspects ${m.aspects} vs ${e.aspects}`);
                 if (!e.refTypes.includes(m.ref) || (m.ref === "style" && e.refTypes.includes("image"))) bad.push(`${label}: reference type ${m.ref} vs ${e.refTypes}`);
+                if (!eq(e.resolutions, m.resolutions || [])) bad.push(`${label}: resolutions ${m.resolutions} vs ${e.resolutions}`);
             }
             const retouch = new Map(entries(read("catalog_retouch_models_list.txt")).map((e) => [e.slug, e]));
             for (const [label, m] of Object.entries(sub._tables.RETOUCH_MODELS)) {
@@ -1011,7 +1040,7 @@ async function main() {
                 if (!eq(e.modes, m.modes)) bad.push(`retouch ${label}: modes ${m.modes} vs ${e.modes}`);
                 if (!eq(e.resolutions, m.resolutions || [])) bad.push(`retouch ${label}: resolutions ${m.resolutions} vs ${e.resolutions}`);
             }
-            check("every generate and retouch entry has the catalog's name (\" (beta)\" for a beta or private model), slug, aspects, modes and resolutions", !bad.length, bad.join(" | "));
+            check("every generate and retouch entry has the catalog's name (\" (beta)\" for a beta or private model), slug, aspects, resolutions and modes", !bad.length, bad.join(" | "));
             // the spec's whole list in its order: GPT 2.5 is beta, Ideogram 4.5 and Qwen Image 3.0 Pro beta and private
             // then the models of the shared recipes the restructure mapped (docs/PLAN_MAGNIFIC_SUB.md "Restructure")
             const spec = ["Auto", "Flux.2 Pro", "Flux.2 Max", "GPT 2", "GPT 2.5 (beta)", "Google Nano Banana Pro", "Google Nano Banana 2", "Seedream 5 Pro", "Ideogram 4.5 (beta)", "Mystic 2.5", "Recraft V4.1", "Qwen Image 3.0 Pro (beta)",
@@ -1222,7 +1251,7 @@ async function main() {
                 gpt_image_2: "gpt-2", grok_imagine: "grok-imagine-2", ideogram_4: "ideogram-4", recraft_v4: "recraft-v4",
             };
             const OWN = { magnific_auto: ["auto", "Magnific Auto"], ideogram_4_5: ["ideogram-4-5", "Ideogram 4.5 (beta)"], qwen_image_3_0_pro: ["qwen-image-3-0-pro", "Qwen Image 3.0 Pro (beta)"], mystic_2_5: ["mystic-2-5", "Mystic 2.5"], recraft_v4_1: ["recraft-v4-1", "Recraft V4.1"] };
-            const UPSCALERS = ["magnific_creative", "magnific_precision"];
+            const UPSCALERS = ["magnific_creative", "magnific_precision", "magnific_precision_v1"];
             const shipped = fs.readdirSync(path.join(ROOT, "recipes")).filter((n) => n.endsWith(".json")).map((n) => n.slice(0, -5)).filter((id) => raw(id).providers && raw(id).providers.magnificsub).sort();
             check("magnificsub sits in exactly the mapped model recipes, the own ones, the two upscalers and the retouch", eq(shipped, [...Object.keys(SHARED), ...Object.keys(OWN), ...UPSCALERS, "magnificsub_retouch"].sort()), shipped.join(", "));
             const bad = [];
@@ -1232,7 +1261,9 @@ async function main() {
                 if (!m) { bad.push(`${id}: ${slug} is not in the table`); continue; }
                 if (v.model !== slug || !v.text || v.text.model !== slug) bad.push(`${id}: model ${v.model}, text ${v.text && v.text.model}, not ${slug}`);
                 if (!v.text || !v.text.refs || v.text.refs.max !== 12 || v.text.refs.model !== null) bad.push(`${id}: text.refs ${JSON.stringify(v.text && v.text.refs)}`);
-                if (!eq(v.settings, [])) bad.push(`${id}: rows ${JSON.stringify(v.settings)}`);
+                // a Resolution row exactly where the catalog lists resolutions: Default (the model's own) and the catalog's values
+                const wantRows = m.resolutions ? [{ index: 1, key: "resolution", label: "Resolution", spec: [["Default", ...m.resolutions], { default: "Default" }] }] : [];
+                if (!eq(v.settings, wantRows)) bad.push(`${id}: rows ${JSON.stringify(v.settings)}`);
                 if (!/^Runs on your Magnific plan \(Premium, Premium\+ or Pro\) through Magnific's MCP server \(mcp\.magnific\.com\), after signing in under Settings › API providers; each run spends the plan's credits/.test(v.note)) bad.push(`${id}: the note's opening`);
                 // a style-only model is Generate new only; the others edit the crop in the model's own shapes
                 if (m.ref === "style") { if (v.edit !== false) bad.push(`${id}: a style-only model with an edit`); }
@@ -1245,13 +1276,19 @@ async function main() {
                 } else if (r.default !== "magnificsub" || !eq(r.providerIds, ["magnificsub"]) || r.name !== OWN[id][1] || r.family !== "Magnific"
                     || !/Magnific plan's credits, after signing in under Settings › API providers/.test(r.description)) bad.push(`${id}: ${r.name}, default ${r.default}, providers ${r.providerIds}`);
             }
-            check("each model recipe's variant names its exact catalog model (edit and text), 12 references, the model's shapes for an edit, none for a style-only one; the default kept; the own recipes named after the catalog, magnificsub alone", !bad.length, bad.join(" | "));
+            check("each model recipe's variant names its exact catalog model (edit and text), a Resolution row exactly where the catalog lists resolutions, 12 references, the model's shapes for an edit, none for a style-only one; the default kept; the own recipes named after the catalog, magnificsub alone", !bad.length, bad.join(" | "));
             // the upscalers: the REST variant stays the default, the subscription's rows moved in as they were
-            const cr = norm("magnific_creative"), pr = norm("magnific_precision"), rt = norm("magnificsub_retouch");
-            const vc = cr.providers.magnificsub, vp = pr.providers.magnificsub, vr = rt.providers.magnificsub;
+            const cr = norm("magnific_creative"), pr = norm("magnific_precision"), rt = norm("magnificsub_retouch"), p1 = norm("magnific_precision_v1");
+            const vc = cr.providers.magnificsub, vp = pr.providers.magnificsub, vr = rt.providers.magnificsub, v1 = p1.providers.magnificsub;
+            check("Precision v1 (high HDR) is a recipe of its own, the catalog's name, magnificsub alone, 2x only, no prompt; its rows are Precision preset and the three sliders, no Mode",
+                p1.name === "Magnific Precision v1 (high HDR)" && p1.task === "upscale" && p1.default === "magnificsub" && eq(p1.providerIds, ["magnificsub"]) && v1.model === "precision-v1" && eq(v1.factor.steps, [2]) && v1.factor.max === 2
+                && v1.usesPrompt === false && eq(v1.settings.map((x) => x.key), ["precisionPreset", "sharpness", "grain", "ultraDetail"]) && eq(sub._upscaleArgs({ model: v1.model, factor: 2, params: Object.fromEntries(v1.settings.map((x) => [x.key, x.spec[1].default])) }), { mode: "ultra", scale: "2x", sharpness: 7, grain: 4, ultraDetail: 7 }));
+            const cat1 = fs.readFileSync(path.join(__dirname, "refs", "magnificsub", "catalog_images_upscale_modes_list.txt"), "utf8");
+            check("the catalog names mode ultra \"Magnific Precision v1 (high HDR)\"", /- id: ultra\n    name: Magnific Precision v1 \(high HDR\)\n/.test(cat1));
             check("the upscalers keep magnific as their default, the subscription's variant right after it", cr.default === "magnific" && pr.default === "magnific" && cr.providerIds[cr.providerIds.indexOf("magnific") + 1] === "magnificsub" && pr.providerIds[pr.providerIds.indexOf("magnific") + 1] === "magnificsub");
             check("Creative: factor 2/4/8/16, the prompt goes along, the model \"creative\"", cr.task === "upscale" && eq(vc.factor.steps, [2, 4, 8, 16]) && vc.factor.default === 2 && vc.usesPrompt === true && vc.text === null && vc.model === "creative");
-            check("Precision: factor 2/4/8/16 (the mode refuses more), no prompt, the model \"precision\"; the REST variant's factor unchanged", pr.task === "upscale" && eq(vp.factor.steps, [2, 4, 8, 16]) && vp.usesPrompt === false && vp.text === null && vp.model === "precision" && pr.providers.magnific.factor.steps === null);
+            check("Precision: factor 2/4/8/16 (the mode refuses more), no prompt, the model \"precision\", its Mode row the V2 flavours only (no v1); the REST variant's factor unchanged", pr.task === "upscale" && eq(vp.factor.steps, [2, 4, 8, 16]) && vp.usesPrompt === false && vp.text === null && vp.model === "precision" && pr.providers.magnific.factor.steps === null
+                && eq(vp.settings.find((x) => x.key === "mode").spec[0], ["Precision sublime", "Precision photo", "Precision photo denoiser"]));
             check("retouch: one provider, input fill, no text shape, the crop at most 2048 in steps of 8", rt.default === "magnificsub" && eq(rt.providerIds, ["magnificsub"]) && vr.input === "fill" && vr.text === null && vr.edit === true && vr.limits.max === 2048 && vr.limits.step === 8);
             // every row's choices are what the adapter's tables take, and the defaults run
             const rows = (v) => Object.fromEntries(v.settings.map((s) => [s.key, s]));
@@ -1317,7 +1354,7 @@ async function main() {
             const banned = ["X-Pik" + "aso-Client", "magnific-editor" + "-plugins"];
             const files = ["electron/main/providers/magnificsub.js", "electron/main/providers/magnificsub_auth.js", "tools/magnificsub_mock.js", "tools/magnificsub_test.js",
                 "recipes/magnificsub_retouch.json", "recipes/magnific_creative.json", "recipes/magnific_precision.json", "recipes/magnific_auto.json", "recipes/ideogram_4_5.json",
-                "recipes/qwen_image_3_0_pro.json", "recipes/mystic_2_5.json", "recipes/recraft_v4_1.json"];
+                "recipes/qwen_image_3_0_pro.json", "recipes/mystic_2_5.json", "recipes/recraft_v4_1.json", "recipes/magnific_precision_v1.json"];
             const hits = files.filter((f) => { const s = fs.readFileSync(path.join(ROOT, f), "utf8").toLowerCase(); return banned.some((b) => s.includes(b.toLowerCase())); });
             check("no plugin client header and no plugin client id in the new files", hits.length === 0, hits.join(", "));
             check("no request of the mock carried a header beyond the usual ones", mock.http.every((h) => h.headers.every((n) => /^(host|connection|content-type|content-length|accept|accept-encoding|accept-language|user-agent|authorization|mcp-protocol-version|mcp-session-id|sec-fetch-mode|transfer-encoding)$/.test(n))),

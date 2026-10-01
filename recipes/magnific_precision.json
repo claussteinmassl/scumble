@@ -86,8 +86,7 @@
             [
               "Precision sublime",
               "Precision photo",
-              "Precision photo denoiser",
-              "Precision v1"
+              "Precision photo denoiser"
             ],
             {
               "default": "Precision sublime"
@@ -161,7 +160,7 @@
           16
         ]
       },
-      "note": "Runs on your Magnific plan (Premium, Premium+ or Pro) through Magnific's MCP server (mcp.magnific.com), after signing in under Settings › API providers; each run spends the plan's credits, the same balance as Magnific's web app, and the status line says how many. The pictures are uploaded to Magnific (Freepik Company S.L., Málaga, Spain) as hidden uploads; the results are Magnific creations and show in your Magnific library. Not run against the live service yet. No prompt. Precision sublime upscales 2, 4, 8 or 16 times, photo, photo denoiser and v1 2 times only (another factor is refused before anything is uploaded). Balanced, Portraits and Grainy analog set the sliders on Magnific's side; Sharpness, Grain and Ultra detail go only with \"None (sliders)\", and sublime takes no Ultra detail. Upscale (the button next to Generate) runs it on the selection, which comes back sharper at the document's resolution, or on the whole picture, which becomes N times larger with every layer scaled along."
+      "note": "Runs on your Magnific plan (Premium, Premium+ or Pro) through Magnific's MCP server (mcp.magnific.com), after signing in under Settings › API providers; each run spends the plan's credits, the same balance as Magnific's web app, and the status line says how many. The pictures are uploaded to Magnific (Freepik Company S.L., Málaga, Spain) as hidden uploads; the results are Magnific creations and show in your Magnific library. Not run against the live service yet. No prompt. The modes are Precision V2's flavours, the same as this recipe's REST variant (Precision v1 is another model, its own recipe Magnific Precision v1 (high HDR)). Precision sublime upscales 2, 4, 8 or 16 times, photo and photo denoiser 2 times only (another factor is refused before anything is uploaded). Balanced, Portraits and Grainy analog set the sliders on Magnific's side; Sharpness, Grain and Ultra detail go only with \"None (sliders)\", and sublime takes no Ultra detail. Upscale (the button next to Generate) runs it on the selection, which comes back sharper at the document's resolution, or on the whole picture, which becomes N times larger with every layer scaled along."
     },
     "comfycloud": {
       "model": "MagnificImageUpscalerPreciseV2Node",

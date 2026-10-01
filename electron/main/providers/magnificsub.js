@@ -21,16 +21,17 @@
 //   edit(req)       kind "fill": image and mask at most 2048 px (scaled only above), padded to multiples of 8, two uploads,
 //                   images_retouch { creationIdentifier, maskCreationIdentifier, mode, prompt?, model?, resolution? }
 //                   kind "edit": the crop and the reference layers uploaded, images_generate { prompt, mode,
-//                   aspectRatio, count: 1, references: [{ type: "image", identifier }] (the crop first), seed? }
+//                   aspectRatio, count: 1, references: [{ type: "image", identifier }] (the crop first), resolution?, seed? }
 //   generate(req)   kind "text": the reference layers uploaded, images_generate { prompt, mode, aspectRatio, count: 1,
-//                   references?: [{ type, identifier }], seed? }
+//                   references?: [{ type, identifier }], resolution? (the Resolution row), seed? }
 //
 // What a recipe variant names in its `model` (the dropdown picks the provider, the recipe the model):
 //
 //   a generate model   the catalog slug ("seedream-5-pro", "flux-2"; magnificsub_tables.js GENERATE_MODELS), for
 //                      kind "edit" (input "edit") and kind "text" (its `text.model`, the same slug)
-//   an upscaler        "creative", or "precision" with a Mode row (key "mode", the Precision mode's label or slug;
-//                      Precision sublime when empty); a mode's slug ("ultra-photo") also names that mode as the default
+//   an upscaler        "creative"; "precision" with a Mode row (key "mode", a Precision V2 flavour's label or slug:
+//                      sublime, photo, photo denoiser; Precision sublime when empty); "precision-v1" (Precision v1,
+//                      never a V2 flavour); a mode's slug ("ultra-photo") also names that mode as the default
 //   the retouch        "images_retouch" with input "fill" (recipes/magnificsub_retouch.json)
 //
 // The shapes of the recipes the model recipes replaced (magnificsub_generate, _creative, _precision; removed) still
@@ -406,16 +407,16 @@ function upscaleMode(req) {
     const p = req.params || {};
     const m = String(req.model || "").trim().replace(/^images_upscale:?/, "");
     let kind = null, fallback = "Creative";
-    if (m === "creative" || m === "precision") {
+    if (Object.prototype.hasOwnProperty.call(T.UPSCALE_KINDS, m)) {
         kind = m;
-        fallback = kind === "precision" ? "Precision sublime" : "Creative";
+        fallback = T.UPSCALE_KINDS[m].fallback;
     } else if (m) {
         const named = T.pick(T.UPSCALE_MODES, m, null, "upscale mode");
         kind = named.kind;
         fallback = named.label;
     }
     const mode = T.pick(T.UPSCALE_MODES, p.mode, fallback, "upscale mode");
-    if (kind && mode.kind !== kind) throw new Error(`${LABEL}: ${mode.label} is not a ${kind === "creative" ? "Creative" : "Precision"} mode; pick the other Magnific upscale recipe.`);
+    if (kind && mode.kind !== kind) throw new Error(`${LABEL}: ${mode.label} is not a ${T.UPSCALE_KINDS[kind].label} mode; pick the Magnific upscale recipe that has it.`);
     return { mode, kind };
 }
 
@@ -610,6 +611,19 @@ function seedFor(seed) {
     return seed <= SEED_MAX ? seed : seed % (SEED_MAX + 1);
 }
 
+/**
+ * The Resolution row's value for images_generate's `resolution`: undefined for an empty row or "Default" (the model's
+ * own); a value the model's catalog entry does not list, or any on a model that lists none, is refused before upload.
+ */
+function resolutionFor(model, params) {
+    const v = (params || {}).resolution;
+    if (v == null || v === "" || v === "Default") return undefined;
+    const res = String(v);
+    if (!model.resolutions) throw new Error(`${LABEL}: ${model.label} takes no resolution; set Resolution to Default.`);
+    if (!model.resolutions.includes(res)) throw new Error(`${LABEL}: ${model.label} takes the resolution ${T.words(model.resolutions)}, not ${res}.`);
+    return res;
+}
+
 /** The model's aspect ratio closest to the asked width and height, from those images_generate takes. */
 function aspectFor(model, w, h) {
     const list = model.aspects.filter((a) => T.GENERATE_ASPECTS.includes(a));
@@ -643,6 +657,8 @@ async function editGenerate(req, ctx) {
     const size = P.imageSize(req.image);
     const [w, h] = size && size[0] > 0 && size[1] > 0 ? size : [+req.width, +req.height];
     const args = { prompt: instruction({ ...req, kind: "edit" }, lay, text), mode: model.slug, aspectRatio: aspectFor(model, w, h), count: 1 };
+    const resolution = resolutionFor(model, req.params);
+    if (resolution) args.resolution = resolution;
     const seed = seedFor(req.seed);
     if (seed !== undefined) args.seed = seed;
     const S = sessionOf(ctx);
@@ -665,6 +681,8 @@ async function generate(req, ctx = {}) {
     if (refs.length > REFS_MAX) throw new Error(`${LABEL}: at most ${REFS_MAX} reference images go with a new image; this run has ${refs.length}.`);
     const lay = textLayout({ ...req, references: refs, original: 0 });
     const args = { prompt: instruction({ ...req, kind: "text" }, lay, text), mode: model.slug, aspectRatio: aspectFor(model, req.width, req.height), count: 1 };
+    const resolution = resolutionFor(model, req.params);
+    if (resolution) args.resolution = resolution;
     const seed = seedFor(req.seed);
     if (seed !== undefined) args.seed = seed;
     const S = sessionOf(ctx);

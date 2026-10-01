@@ -18,14 +18,21 @@ const PRECISION_KEYS = ["sharpness", "grain", "ultraDetail", "precisionPreset"];
 const ALL_SCALES = ["2x", "4x", "8x", "16x"];
 
 // catalog_images_upscale_modes_list.txt: each mode's scales and the keys it takes ("supply only that mode's optional
-// params"); `kind` is the variant it belongs to (the magnificsub variants of recipes/magnific_creative.json and
-// recipes/magnific_precision.json)
+// params"); `kind` is the upscaler it belongs to: "creative" (recipes/magnific_creative.json), "precision" (the three
+// Precision V2 flavours, recipes/magnific_precision.json, the same as the REST precision-v2 flavours) and
+// "precision-v1" (the older model, its own recipe recipes/magnific_precision_v1.json: never offered as a V2 flavour)
 const UPSCALE_MODES = Object.freeze({
     "Creative": { slug: "creative", scales: ALL_SCALES, keys: CREATIVE_KEYS, kind: "creative" },
     "Precision sublime": { slug: "ultra-sublime", scales: ALL_SCALES, keys: PRECISION_KEYS.filter((k) => k !== "ultraDetail"), kind: "precision" },
     "Precision photo": { slug: "ultra-photo", scales: ["2x"], keys: PRECISION_KEYS, kind: "precision" },
     "Precision photo denoiser": { slug: "ultra-denoiser", scales: ["2x"], keys: PRECISION_KEYS, kind: "precision" },
-    "Precision v1": { slug: "ultra", scales: ["2x"], keys: PRECISION_KEYS, kind: "precision" },
+    "Precision v1": { slug: "ultra", scales: ["2x"], keys: PRECISION_KEYS, kind: "precision-v1" },
+});
+// the upscalers a variant's `model` names, their label in a refusal and the mode an empty Mode row takes
+const UPSCALE_KINDS = Object.freeze({
+    "creative": { label: "Creative", fallback: "Creative" },
+    "precision": { label: "Precision", fallback: "Precision sublime" },
+    "precision-v1": { label: "Precision v1", fallback: "Precision v1" },
 });
 // Creative's presets; "Custom (sliders)" sends presets "custom" with the four sliders (a named preset sets them itself)
 const CREATIVE_PRESETS = Object.freeze({
@@ -81,24 +88,25 @@ const RETOUCH_MODELS = Object.freeze({
 // where the model takes one, as "style" (a creation as a style picture) where it takes only that. The spec's list, in
 // its order; GPT 2.5 is beta, Ideogram 4.5 and Qwen Image 3.0 Pro are beta and private. Then the models of the shared
 // model recipes the restructure mapped (docs/PLAN_MAGNIFIC_SUB.md "Restructure": exactly the recipe's model and
-// version); Grok Imagine 2.0 is beta and private.
+// version); Grok Imagine 2.0 is beta and private. `resolutions` where the catalog lists them (images_generate's
+// `resolution`; none listed: the model has no choice and nothing is sent).
 const GENERATE_MODELS = Object.freeze({
     "Auto": { slug: "auto", ref: "image", aspects: ["1:1", "16:9", "9:16", "2:3", "3:4", "1:2", "2:1", "4:5", "3:2", "4:3"] },
-    "Flux.2 Pro": { slug: "flux-2", ref: "image", aspects: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "1:2", "2:1", "4:5"] },
-    "Flux.2 Max": { slug: "flux-2-max", ref: "image", aspects: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "1:2", "2:1", "4:5"] },
-    "GPT 2": { slug: "gpt-2", ref: "image", aspects: ["1:1", "2:1", "3:1", "2:3", "3:2", "3:4", "4:3", "16:9", "9:16", "21:9"] },
-    "GPT 2.5 (beta)": { slug: "gpt-2-mini", ref: "image", aspects: ["1:1", "2:1", "3:1", "2:3", "3:2", "3:4", "4:3", "16:9", "9:16", "21:9"] },
-    "Google Nano Banana Pro": { slug: "imagen-nano-banana-2", ref: "image", aspects: ["1:1", "21:9", "16:9", "9:16", "4:3", "4:5", "5:4", "3:4", "3:2", "2:3"] },
-    "Google Nano Banana 2": { slug: "imagen-nano-banana-2-flash", ref: "image", aspects: ["1:1", "21:9", "8:1", "4:1", "16:9", "9:16", "1:4", "1:8", "4:3", "4:5", "5:4", "3:4", "3:2", "2:3"] },
-    "Seedream 5 Pro": { slug: "seedream-5-pro", ref: "image", aspects: ["1:1", "4:3", "3:4", "16:9", "9:16", "3:2", "2:3", "21:9"] },
+    "Flux.2 Pro": { slug: "flux-2", ref: "image", aspects: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "1:2", "2:1", "4:5"], resolutions: ["1k", "2k"] },
+    "Flux.2 Max": { slug: "flux-2-max", ref: "image", aspects: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "1:2", "2:1", "4:5"], resolutions: ["1k", "2k"] },
+    "GPT 2": { slug: "gpt-2", ref: "image", aspects: ["1:1", "2:1", "3:1", "2:3", "3:2", "3:4", "4:3", "16:9", "9:16", "21:9"], resolutions: ["1k", "2k", "4k"] },
+    "GPT 2.5 (beta)": { slug: "gpt-2-mini", ref: "image", aspects: ["1:1", "2:1", "3:1", "2:3", "3:2", "3:4", "4:3", "16:9", "9:16", "21:9"], resolutions: ["1k", "2k", "4k"] },
+    "Google Nano Banana Pro": { slug: "imagen-nano-banana-2", ref: "image", aspects: ["1:1", "21:9", "16:9", "9:16", "4:3", "4:5", "5:4", "3:4", "3:2", "2:3"], resolutions: ["1k", "2k", "4k"] },
+    "Google Nano Banana 2": { slug: "imagen-nano-banana-2-flash", ref: "image", aspects: ["1:1", "21:9", "8:1", "4:1", "16:9", "9:16", "1:4", "1:8", "4:3", "4:5", "5:4", "3:4", "3:2", "2:3"], resolutions: ["1k", "2k", "4k"] },
+    "Seedream 5 Pro": { slug: "seedream-5-pro", ref: "image", aspects: ["1:1", "4:3", "3:4", "16:9", "9:16", "3:2", "2:3", "21:9"], resolutions: ["1.5k", "2k"] },
     "Ideogram 4.5 (beta)": { slug: "ideogram-4-5", ref: "image", aspects: ["1:1", "4:5", "5:4", "3:4", "4:3", "2:3", "3:2", "9:16", "16:9", "1:2", "2:1", "1:3", "3:1"] },
     "Mystic 2.5": { slug: "mystic-2-5", ref: "style", aspects: ["1:1", "16:9", "9:16", "2:3", "3:4", "1:2", "2:1", "4:5", "3:2", "4:3"] },
     "Recraft V4.1": { slug: "recraft-v4-1", ref: "style", aspects: ["1:1", "2:1", "1:2", "3:2", "2:3", "4:3", "3:4", "5:4", "4:5", "16:9", "9:16"] },
-    "Qwen Image 3.0 Pro (beta)": { slug: "qwen-image-3-0-pro", ref: "image", aspects: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "1:2", "2:1", "4:5"] },
-    "Flux.2 Flex": { slug: "flux-2-flex", ref: "image", aspects: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "1:2", "2:1", "4:5"] },
+    "Qwen Image 3.0 Pro (beta)": { slug: "qwen-image-3-0-pro", ref: "image", aspects: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "1:2", "2:1", "4:5"], resolutions: ["1k", "2k"] },
+    "Flux.2 Flex": { slug: "flux-2-flex", ref: "image", aspects: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "1:2", "2:1", "4:5"], resolutions: ["1k", "2k"] },
     "Google Nano Banana 2 Lite": { slug: "imagen-nano-banana-2-lite", ref: "image", aspects: ["1:1", "2:3", "3:2", "4:3", "3:4", "5:4", "4:5", "16:9", "9:16", "21:9"] },
-    "Seedream 4.5": { slug: "seedream-4-5", ref: "image", aspects: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "1:2", "2:1", "4:5", "21:9"] },
-    "Seedream 5 Lite": { slug: "seedream-5-lite", ref: "image", aspects: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "1:2", "2:1", "4:5", "21:9"] },
+    "Seedream 4.5": { slug: "seedream-4-5", ref: "image", aspects: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "1:2", "2:1", "4:5", "21:9"], resolutions: ["2k", "4k"] },
+    "Seedream 5 Lite": { slug: "seedream-5-lite", ref: "image", aspects: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "1:2", "2:1", "4:5", "21:9"], resolutions: ["2k", "3k", "4k"] },
     "Ideogram 4": { slug: "ideogram-4", ref: "style", aspects: ["1:1", "16:9", "9:16", "10:16", "16:10", "4:3", "3:4", "3:2", "2:3", "4:5", "5:4", "2:1", "1:2", "3:1", "1:3"] },
     "Recraft V4": { slug: "recraft-v4", ref: "style", aspects: ["1:1", "2:1", "1:2", "3:2", "2:3", "4:3", "3:4", "5:4", "4:5", "16:9", "9:16"] },
     "Grok Imagine 2.0 (beta)": { slug: "grok-imagine-2", ref: "image", aspects: ["1:1", "16:9", "9:16", "2:3", "3:4", "1:2", "2:1", "3:2", "4:3"] },
@@ -130,6 +138,6 @@ function int(value, [key, min, max]) {
 }
 
 module.exports = {
-    LABEL, GENERATE_ASPECTS, UPSCALE_MODES, CREATIVE_PRESETS, PRECISION_PRESETS, UPSCALE_OPTIMISED, UPSCALE_ENGINES,
+    LABEL, GENERATE_ASPECTS, UPSCALE_MODES, UPSCALE_KINDS, CREATIVE_PRESETS, PRECISION_PRESETS, UPSCALE_OPTIMISED, UPSCALE_ENGINES,
     UPSCALE_SLIDERS, RETOUCH_MODES, RETOUCH_MODELS, GENERATE_MODELS, pick, words, int,
 };

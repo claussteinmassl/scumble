@@ -14,6 +14,8 @@ waits in providers:status, and this script GETs it (the mock's 302 lands on the 
 - Sign in from the row: "waiting for the browser…" with Cancel, then "signed in as mock.user@example.com (Mock Plan)"
   with Sign out and "check balance", which answers "1000 credits (Mock Plan)"; the options lose "(not signed in)"; the cutout list offers
   Magnific (subscription), last, and does not select it; the other rows are the same as signed out (and after Sign out);
+- the Upscale dialog after a profile of the removed Magnific Creative (subscription) migrated: Magnific Creative with
+  "Magnific (subscription)" picked;
 - a cutout click with nothing picked (no free backend in a gate profile) sends nothing and says to pick it;
 - one run each through the window: a Creative upscale of a small picture (Magnific Creative on the provider magnificsub;
   the document twice as large), a retouch of a selection (a result layer), a cutout of that layer (its mask about half
@@ -81,7 +83,7 @@ window.__msDoc = null;
 const had = await window.scumble.keys.list();
 if ((had.keys || {}).magnificsub && had.keys.magnificsub.set) throw new Error("this profile holds a Magnific (subscription) sign-in; the test never overwrites one");
 const s = await window.scumble.settings.get();
-window.__ms = { saved: { magnificsub: s.magnificsub, recipeProviders: s.recipeProviders || {}, recipe: s.recipe, recipeByMode: s.recipeByMode }, recipe: host.recipe };
+window.__ms = { saved: { magnificsub: s.magnificsub, recipeProviders: s.recipeProviders || {}, recipe: s.recipe, recipeByMode: s.recipeByMode, upscaleRecipe: s.upscaleRecipe }, recipe: host.recipe };
 await window.scumble.settings.set({ magnificsub: { base: __MOCK__ } });
 const d = await run("new_document");
 window.__msDoc = d.id;
@@ -195,6 +197,25 @@ const m = /(\\d+)% kept/.exec(ed.status);
 return { mask: !!layer.maskPx, kept: m ? +m[1] : null, status: ed.status };
 """
 
+# the Upscale dialog with the settings a profile of the removed magnificsub_creative migrates to (settings.js
+# migrateRecipes, tools/settings_migration_test.js): upscaleRecipe magnific_creative on the provider magnificsub, while
+# the selected recipe is no upscaler. The dialog shows that recipe with "Magnific (subscription)" picked.
+UP_DIALOG = """
+const ed = ednow(window.__msDoc);
+host.shell.activate(ed);
+if (host.recipe && host.recipe.task === "upscale") throw new Error("the selected recipe is an upscaler: " + host.recipe.id);
+const cur = await window.scumble.settings.get();
+await window.scumble.settings.set({ upscaleRecipe: "magnific_creative", recipeProviders: { ...(cur.recipeProviders || {}), magnific_creative: "magnificsub" } });
+await openSettings(); closeSettings();   // the shell reads the settings again
+shell.openUpscale(ed);
+await wait(300);
+const rec = document.getElementById("up-recipe"), sel = document.getElementById("up-provider");
+const out = { recipe: rec.value, provider: sel.value, text: sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex].textContent : null, options: Array.from(sel.options).map((o) => o.value), shown: !document.getElementById("up-provider-row").hidden };
+document.getElementById("up-dialog").close();
+if (out.recipe !== "magnific_creative" || out.provider !== "magnificsub" || out.text !== __LABEL__ || !out.shown) throw new Error("the Upscale dialog: " + JSON.stringify(out));
+return out;
+"""
+
 NOT_PICKED = """
 const ed = ednow(window.__msDoc);
 host.shell.activate(ed);
@@ -252,7 +273,7 @@ if (t) {
     if (t.recipe && t.recipe.id === s.recipe) host.shell.selectRecipe(t.recipe.id);
     else if (t.recipe) host.setRecipe(t.recipe);
     await wait(800);
-    await window.scumble.settings.set({ magnificsub: s.magnificsub, recipeProviders: s.recipeProviders, recipe: s.recipe, recipeByMode: s.recipeByMode });
+    await window.scumble.settings.set({ magnificsub: s.magnificsub, recipeProviders: s.recipeProviders, recipe: s.recipe, recipeByMode: s.recipeByMode, upscaleRecipe: s.upscaleRecipe });
     await shell.openSettings();
     document.getElementById("shell-settings").close();
 }
@@ -397,6 +418,10 @@ async def run_all(c):
             retouched["id"] = res["layer"]["id"]
             done("a_retouch_of_a_selection", {"layer": res["layer"], "status": res["status"][-120:]})
         await step("a_retouch_of_a_selection", retouch)
+
+        async def up_dialog():
+            done("the_upscale_dialog_after_a_migrated_profile", await ev(UP_DIALOG))
+        await step("the_upscale_dialog_after_a_migrated_profile", up_dialog)
 
         async def not_picked():
             if "id" not in retouched:

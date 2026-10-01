@@ -1,0 +1,85 @@
+{
+  "id": "magnific_precision_v1",
+  "kind": "provider",
+  "task": "upscale",
+  "name": "Magnific Precision v1 (high HDR)",
+  "family": "Upscale",
+  "description": "Magnific's original Precision upscaler (v1, a tougher HDR-like look with more halos than Precision V2) on your Magnific plan's credits, after signing in under Settings › API providers: sharper, no invented content, 2 times only. Not run against the live service yet.",
+  "default": "magnificsub",
+  "factor": {
+    "default": 2,
+    "min": 2,
+    "max": 2,
+    "steps": [
+      2
+    ]
+  },
+  "providers": {
+    "magnificsub": {
+      "model": "precision-v1",
+      "settings": [
+        {
+          "index": 1,
+          "key": "precisionPreset",
+          "label": "Precision preset",
+          "spec": [
+            [
+              "None (sliders)",
+              "Balanced",
+              "Portraits",
+              "Grainy analog"
+            ],
+            {
+              "default": "None (sliders)"
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "key": "sharpness",
+          "label": "Sharpness",
+          "spec": [
+            "INT",
+            {
+              "default": 7,
+              "min": 0,
+              "max": 100
+            }
+          ]
+        },
+        {
+          "index": 3,
+          "key": "grain",
+          "label": "Grain",
+          "spec": [
+            "INT",
+            {
+              "default": 4,
+              "min": 0,
+              "max": 100
+            }
+          ]
+        },
+        {
+          "index": 4,
+          "key": "ultraDetail",
+          "label": "Ultra detail",
+          "spec": [
+            "INT",
+            {
+              "default": 7,
+              "min": 0,
+              "max": 100
+            }
+          ]
+        }
+      ],
+      "note": "Runs on your Magnific plan (Premium, Premium+ or Pro) through Magnific's MCP server (mcp.magnific.com), after signing in under Settings › API providers; each run spends the plan's credits, the same balance as Magnific's web app, and the status line says how many. The pictures are uploaded to Magnific (Freepik Company S.L., Málaga, Spain) as hidden uploads; the results are Magnific creations and show in your Magnific library. Not run against the live service yet. No prompt. Magnific's catalog calls it \"Magnific Precision v1 (high HDR)\" (mode ultra): the original Precision, another model than Precision V2 (Magnific Precision (upscale)). 2 times only (another factor is refused before anything is uploaded). Balanced, Portraits and Grainy analog set the sliders on Magnific's side; Sharpness, Grain and Ultra detail go only with \"None (sliders)\". Upscale (the button next to Generate) runs it on the selection, which comes back sharper at the document's resolution, or on the whole picture, which becomes twice as large with every layer scaled along."
+    }
+  },
+  "limits": {
+    "min": 32,
+    "max": 4096,
+    "step": 1
+  }
+}
