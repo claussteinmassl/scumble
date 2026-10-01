@@ -1,0 +1,74 @@
+{
+  "name": "creations_request_upload",
+  "title": "Request Upload URL",
+  "description": "Step 1 for local/user files: get presigned PUT URL(s). Upload bytes outside MCP, then call `creations_finalize_upload`.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "mimeType": {
+        "description": "File MIME type.",
+        "enum": [
+          "image/jpeg",
+          "image/png",
+          "image/svg+xml",
+          "image/webp",
+          "video/mp4",
+          "video/quicktime",
+          "video/webm",
+          "video/x-m4v",
+          "audio/wav",
+          "audio/x-wav",
+          "audio/mpeg",
+          "audio/mp4",
+          "audio/ogg",
+          "audio/flac",
+          "model/gltf-binary"
+        ],
+        "type": "string"
+      },
+      "count": {
+        "description": "Batch count; omitted returns one upload.",
+        "minimum": 1,
+        "maximum": 100,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "mimeType"
+    ]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "proxyUploadUrl": {
+        "type": "string"
+      },
+      "path": {
+        "type": "string"
+      },
+      "mimeType": {
+        "type": "string"
+      },
+      "expiresAt": {
+        "type": "string"
+      },
+      "uploads": {
+        "type": "array"
+      },
+      "count": {
+        "type": "integer"
+      },
+      "instructions": {
+        "type": [
+          "string",
+          "array"
+        ]
+      }
+    }
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "openWorldHint": false
+  }
+}

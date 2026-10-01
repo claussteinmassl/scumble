@@ -1,0 +1,195 @@
+models[19]:
+  - slug: retouch-auto
+    name: Auto
+    family: retouch
+    tool: retouch
+    beta: false
+    expectedGenerationTime: 22
+    retouchModes[2]: replace,erase
+    retouchTypes[2]: precise,creative
+    requiresPremium: true
+  - slug: retouch-classic
+    name: Classic
+    family: retouch
+    tool: retouch
+    beta: false
+    expectedGenerationTime: 8
+    retouchModes[1]: replace
+    retouchTypes[1]: precise
+    requiresPremium: true
+  - slug: retouch-erase
+    name: Erase
+    family: retouch
+    tool: retouch
+    beta: false
+    expectedGenerationTime: 16
+    retouchModes[1]: erase
+    retouchTypes[1]: precise
+    requiresPremium: true
+  - slug: retouch-inpaint-lab-gpt-2
+    name: GPT 2
+    family: retouch
+    tool: retouch
+    beta: true
+    expectedGenerationTime: 86
+    retouchModes[2]: replace,erase
+    retouchTypes[1]: creative
+    resolutions[3]: 1k,2k,4k
+    defaultResolution: 2k
+    requiresPremium: true
+    private: true
+  - slug: retouch-precise-gpt-2
+    name: GPT 2
+    family: retouch
+    tool: retouch
+    beta: true
+    expectedGenerationTime: 91
+    retouchModes[2]: replace,erase
+    retouchTypes[1]: precise
+    requiresPremium: true
+    private: true
+  - slug: retouch-inpaint-lab-gpt-2-mini
+    name: GPT 2.5
+    family: retouch
+    tool: retouch
+    beta: true
+    expectedGenerationTime: 31
+    retouchModes[2]: replace,erase
+    retouchTypes[1]: creative
+    resolutions[3]: 1k,2k,4k
+    defaultResolution: 2k
+    requiresPremium: true
+    private: true
+  - slug: retouch-precise-gpt-2-mini
+    name: GPT 2.5
+    family: retouch
+    tool: retouch
+    beta: true
+    expectedGenerationTime: 122
+    retouchModes[2]: replace,erase
+    retouchTypes[1]: precise
+    requiresPremium: true
+    private: true
+  - slug: retouch-imagen-nano-banana-2-flash
+    name: Google Nano Banana 2
+    family: retouch
+    tool: retouch
+    beta: false
+    expectedGenerationTime: 58
+    retouchModes[1]: replace
+    retouchTypes[1]: creative
+    resolutions[3]: 1k,2k,4k
+    defaultResolution: 2k
+    requiresPremium: true
+  - slug: retouch-inpaint-lab-nano-banana-2-flash
+    name: Google Nano Banana 2
+    family: retouch
+    tool: retouch
+    beta: true
+    expectedGenerationTime: 55
+    retouchModes[2]: replace,erase
+    retouchTypes[1]: creative
+    resolutions[3]: 1k,2k,4k
+    defaultResolution: 2k
+    requiresPremium: true
+  - slug: retouch-precise-nano-banana-2-flash
+    name: Google Nano Banana 2
+    family: retouch
+    tool: retouch
+    beta: true
+    expectedGenerationTime: 132
+    retouchModes[2]: replace,erase
+    retouchTypes[1]: precise
+    requiresPremium: true
+    private: true
+  - slug: retouch-imagen-nano-banana-2
+    name: Google Nano Banana Pro
+    family: retouch
+    tool: retouch
+    beta: false
+    expectedGenerationTime: 43
+    retouchModes[1]: replace
+    retouchTypes[1]: creative
+    resolutions[2]: 2k,4k
+    defaultResolution: 2k
+    requiresPremium: true
+  - slug: retouch-inpaint-lab-nano-banana-pro
+    name: Google Nano Banana Pro
+    family: retouch
+    tool: retouch
+    beta: true
+    expectedGenerationTime: 38
+    retouchModes[2]: replace,erase
+    retouchTypes[1]: creative
+    resolutions[2]: 2k,4k
+    defaultResolution: 2k
+    requiresPremium: true
+  - slug: retouch-precise-nano-banana-pro
+    name: Google Nano Banana Pro
+    family: retouch
+    tool: retouch
+    beta: true
+    expectedGenerationTime: 105
+    retouchModes[2]: replace,erase
+    retouchTypes[1]: precise
+    requiresPremium: true
+    private: true
+  - slug: retouch-ideogram-4-5
+    name: Ideogram 4.5
+    family: retouch
+    tool: retouch
+    beta: true
+    expectedGenerationTime: 33
+    retouchModes[2]: replace,erase
+    retouchTypes[1]: creative
+    requiresPremium: true
+    private: true
+  - slug: retouch-precise-ideogram-4-5
+    name: Ideogram 4.5
+    family: retouch
+    tool: retouch
+    beta: true
+    expectedGenerationTime: 62
+    retouchModes[2]: replace,erase
+    retouchTypes[1]: precise
+    requiresPremium: true
+    private: true
+  - slug: retouch-reference
+    name: Ideogram Character
+    family: retouch
+    tool: retouch
+    beta: false
+    expectedGenerationTime: 31
+    retouchModes[1]: replace
+    retouchTypes[1]: precise
+    requiresPremium: true
+  - slug: retouch-lora
+    name: Lora
+    family: retouch
+    tool: retouch
+    beta: false
+    expectedGenerationTime: 23
+    retouchModes[1]: replace
+    retouchTypes[1]: precise
+    requiresPremium: true
+  - slug: retouch-pro
+    name: Pro
+    family: retouch
+    tool: retouch
+    beta: false
+    expectedGenerationTime: 13
+    retouchModes[2]: replace,erase
+    retouchTypes[1]: precise
+    requiresPremium: true
+  - slug: retouch-inpaint-lab-seedream-5-pro
+    name: Seedream 5 Pro
+    family: retouch
+    tool: retouch
+    beta: true
+    expectedGenerationTime: 59
+    retouchModes[2]: replace,erase
+    retouchTypes[1]: creative
+    resolutions[2]: 1.5k,2k
+    defaultResolution: 2k
+    requiresPremium: true
+instruction: "Only offer a model whose `retouchModes` includes the mode you will run. Omit `model` in images_retouch to let Auto pick. `private: true` = internal or feature-flagged, not generally available. Use optional `search` to narrow by name or slug before reading the full catalog."

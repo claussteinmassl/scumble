@@ -1,0 +1,27 @@
+{
+  "name": "creations_get",
+  "title": "Get Creation",
+  "description": "Complete creation data \u2014 metadata + URLs (`url` full-res, `previewUrl` ~1024px, `thumbnailUrl` ~400px). For several creations pass `identifiers` (max 50) and get them all in ONE call; `creationIdentifier` returns one unwrapped. Ids that do not resolve come back in `notFound`, not as an error.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "creationIdentifier": {
+        "type": "string"
+      },
+      "identifiers": {
+        "minItems": 1,
+        "maxItems": 50,
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      }
+    }
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}

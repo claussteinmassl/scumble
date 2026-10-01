@@ -1,0 +1,112 @@
+{
+  "name": "images_remove_background",
+  "title": "Remove Background",
+  "description": "Cut-out subject on transparent PNG. A solid-color background is not available over MCP: cut out first, then composite client-side. New AI scene behind the subject: `images_generate` with this image as reference + prompt \"replace the background with X\" (every client), or `images_replace_background` when it appears in your tools/list.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "creationIdentifier": {
+        "description": "Image creation identifier (import uploads first).",
+        "type": "string"
+      },
+      "folderReference": {
+        "description": "From `folders_list`. Omit \u2192 the user's Personal project. Does NOT persist: once the user names a target, pass it on EVERY later generation/edit call.",
+        "type": "string"
+      }
+    },
+    "required": [
+      "creationIdentifier"
+    ]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "creation": {
+        "properties": {
+          "identifier": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "expectTime": {
+            "description": "Seconds left; 0 once terminal.",
+            "type": "integer"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "credits": {
+            "type": "integer"
+          },
+          "creditsNote": {
+            "type": "string"
+          },
+          "webUrl": {
+            "type": "string"
+          },
+          "designerUrl": {
+            "type": "string"
+          }
+        },
+        "type": "object",
+        "required": [
+          "identifier",
+          "status"
+        ]
+      },
+      "creations": {
+        "items": {
+          "properties": {
+            "identifier": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "expectTime": {
+              "description": "Seconds left; 0 once terminal.",
+              "type": "integer"
+            },
+            "tool": {
+              "type": "string"
+            },
+            "credits": {
+              "type": "integer"
+            },
+            "creditsNote": {
+              "type": "string"
+            },
+            "webUrl": {
+              "type": "string"
+            },
+            "designerUrl": {
+              "type": "string"
+            }
+          },
+          "type": "object",
+          "required": [
+            "identifier",
+            "status"
+          ]
+        },
+        "type": "array"
+      },
+      "partialFailure": {
+        "description": "Some outputs queued, the rest stopped here.",
+        "type": "string"
+      },
+      "instruction": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "instruction"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "openWorldHint": false
+  }
+}

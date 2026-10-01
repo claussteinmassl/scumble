@@ -1,0 +1,20 @@
+{
+  "name": "retouch_models_list",
+  "title": "List Retouch Models",
+  "description": "Retouch (inpaint / erase) model catalog as lean TOON text, with the modes each model runs (`retouchModes`). Pass one as `images_retouch.model`; omit it for Auto. `search` filters by name, slug, family, description, or tags.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "search": {
+        "description": "Case-insensitive.",
+        "type": "string"
+      }
+    }
+  },
+  "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}

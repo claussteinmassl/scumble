@@ -1,0 +1,75 @@
+{
+  "name": "creations_finalize_upload",
+  "title": "Finalize Upload",
+  "description": "Step 2 after PUT from `creations_request_upload`: convert temp path(s) to creations. Pass the original source `fileName` (optional) so the creation is born with the user's file name instead of nameless. SVG <=10MB, raster images <=25MB, audio <=50MB, videos <=200MB.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "description": "Single path from `creations_request_upload`.",
+        "type": "string"
+      },
+      "fileName": {
+        "description": "Optional original source file name (may include a path; the server keeps only the base name). Names the creation, e.g. `lola-bonfire.png`.",
+        "type": "string"
+      },
+      "uploads": {
+        "description": "Batch 1-100.",
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "path": {
+              "description": "Path from uploads[].",
+              "type": "string"
+            },
+            "fileName": {
+              "description": "Optional original source file name for this upload (may include a path; the server keeps only the base name).",
+              "type": "string"
+            }
+          },
+          "type": "object",
+          "required": [
+            "path"
+          ]
+        },
+        "type": "array"
+      },
+      "visible": {
+        "description": "Show the upload in the user's library. Default true; pass false for a throwaway working asset.",
+        "type": "boolean"
+      },
+      "folderReference": {
+        "description": "From `folders_list`. Omit \u2192 the user's Personal project. Does NOT persist: once the user names a target, pass it on EVERY later generation/edit call.",
+        "type": "string"
+      }
+    }
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "identifier": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      },
+      "results": {
+        "type": "array"
+      },
+      "errors": {
+        "type": "array"
+      },
+      "count": {
+        "type": "integer"
+      },
+      "errorCount": {
+        "type": "integer"
+      }
+    }
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "openWorldHint": false
+  }
+}

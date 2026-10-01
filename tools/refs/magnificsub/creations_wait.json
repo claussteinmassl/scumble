@@ -1,0 +1,83 @@
+{
+  "name": "creations_wait",
+  "title": "Wait For Creations",
+  "description": "Long-poll 1..8 creations until terminal or `timeoutSeconds` (default 25, max 25). In-progress entries get `poll_after_seconds` for the next call.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "identifiers": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "timeoutSeconds": {
+        "minimum": 0,
+        "maximum": 25,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "identifiers"
+    ]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "results": {
+        "items": {
+          "properties": {
+            "identifier": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "results": {
+              "type": [
+                "object",
+                "array"
+              ]
+            },
+            "failureReason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "poll_after_seconds": {
+              "type": "integer"
+            },
+            "expectTime": {
+              "type": "integer"
+            },
+            "brandCheck": {
+              "type": "object"
+            }
+          },
+          "type": "object",
+          "required": [
+            "identifier",
+            "status"
+          ]
+        },
+        "type": "array"
+      },
+      "allTerminal": {
+        "type": "boolean"
+      },
+      "instruction": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "results",
+      "allTerminal"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "openWorldHint": false
+  }
+}

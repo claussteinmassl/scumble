@@ -1,0 +1,164 @@
+{
+  "name": "simulate_cost",
+  "title": "Preview Generation Cost",
+  "description": "Estimate credit cost before running one credit-consuming tool. Pass `tool` + same `arguments` you would pass to that tool. Read-only \u2014 never charges.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "tool": {
+        "description": "Real tool name, not a legacy simulate_* name.",
+        "enum": [
+          "images_generate",
+          "mockups_generate",
+          "images_generate_svg",
+          "images_to_svg",
+          "images_remove_background",
+          "images_upscale",
+          "images_crop",
+          "images_resize",
+          "images_variations",
+          "images_relight",
+          "images_pbr_maps",
+          "images_change_camera",
+          "images_skin_enhancer",
+          "images_retouch",
+          "images_expand",
+          "images_segment",
+          "images_restyle",
+          "images_replace_background",
+          "images_reimagine",
+          "images_split_grid",
+          "images_depth_map",
+          "images_animate_svg",
+          "video_generate",
+          "video_upscale",
+          "video_hdr",
+          "video_modify",
+          "video_motion_edit",
+          "video_relight",
+          "video_speak",
+          "video_dubbing",
+          "video_crop",
+          "audio_tts",
+          "text_generate",
+          "audio_music_generate",
+          "audio_sfx_generate",
+          "audio_voice_change",
+          "audio_isolate",
+          "audio_clean_speech",
+          "models3d_generate",
+          "models3d_text_generate",
+          "models3d_remesh",
+          "models3d_retexture",
+          "models3d_uv_unwrap",
+          "models3d_resize",
+          "models3d_convert",
+          "models3d_segment",
+          "models3d_complete",
+          "models3d_rig",
+          "models3d_motion_generate",
+          "models3d_animate"
+        ],
+        "type": "string"
+      },
+      "arguments": {
+        "description": "Same args as the target tool. Pass {} to get its required/optional args back.",
+        "type": "object"
+      }
+    },
+    "required": [
+      "tool"
+    ]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "credits": {
+        "type": [
+          "integer",
+          "number",
+          "null"
+        ]
+      },
+      "isUnlimited": {
+        "type": "boolean"
+      },
+      "isFree": {
+        "type": "boolean"
+      },
+      "certainty": {
+        "enum": [
+          "exact",
+          "variable",
+          "unsupported"
+        ],
+        "type": "string"
+      },
+      "reason": {
+        "type": "string"
+      },
+      "mode": {
+        "type": "string"
+      },
+      "model": {
+        "type": "string"
+      },
+      "numberOfImages": {
+        "type": "integer"
+      },
+      "pendingImageReferenceCount": {
+        "minimum": 0,
+        "maximum": 12,
+        "type": "integer"
+      },
+      "numImages": {
+        "type": "integer"
+      },
+      "quality": {
+        "type": "string"
+      },
+      "resolution": {
+        "type": "string"
+      },
+      "durationSeconds": {
+        "type": [
+          "integer",
+          "number"
+        ]
+      },
+      "range": {
+        "properties": {
+          "min": {
+            "type": [
+              "integer",
+              "number",
+              "null"
+            ]
+          },
+          "max": {
+            "type": [
+              "integer",
+              "number",
+              "null"
+            ]
+          },
+          "tiers": {
+            "type": "array"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "required": [
+      "credits",
+      "isUnlimited",
+      "certainty"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}

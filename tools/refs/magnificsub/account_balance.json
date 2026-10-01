@@ -1,0 +1,82 @@
+{
+  "name": "account_balance",
+  "title": "Get Account Balance",
+  "description": "User plan + credits. Check before paid generations. Returns plan.{tier,productName,isUnlimitedMode,unlimitedAppliesHere}, credits.{available,totalPlan,spent,hasExtraCredits}. No history.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {}
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "plan": {
+        "properties": {
+          "tier": {
+            "type": "string"
+          },
+          "productName": {
+            "type": "string"
+          },
+          "isUnlimitedMode": {
+            "type": "boolean"
+          },
+          "unlimitedAppliesHere": {
+            "type": "boolean"
+          }
+        },
+        "type": "object",
+        "required": [
+          "isUnlimitedMode",
+          "unlimitedAppliesHere"
+        ]
+      },
+      "credits": {
+        "properties": {
+          "available": {
+            "type": "integer"
+          },
+          "totalPlan": {
+            "type": "integer"
+          },
+          "spent": {
+            "type": "integer"
+          },
+          "hasExtraCredits": {
+            "type": "boolean"
+          }
+        },
+        "type": "object",
+        "required": [
+          "available",
+          "totalPlan",
+          "spent",
+          "hasExtraCredits"
+        ]
+      },
+      "shared": {
+        "properties": {
+          "creditsShared": {
+            "type": "integer"
+          },
+          "creditsAddonsShared": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "instruction": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "plan",
+      "credits"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}

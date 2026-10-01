@@ -1,0 +1,62 @@
+{
+  "name": "creations_register_download",
+  "title": "Register Creation Download",
+  "description": "Record asset egress (`creation.downloaded`) for creations about to be saved outside the platform. Editor plugins call it right before writing result files to disk. Max 8 identifiers. `originals[]` carries the untouched original of any image whose `url` is a re-encode; save that file instead of `url`.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "identifiers": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "tool": {
+        "description": "Generation tool override for attribution.",
+        "type": "string"
+      }
+    },
+    "required": [
+      "identifiers"
+    ]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "recorded": {
+        "type": "integer"
+      },
+      "skipped": {
+        "type": "integer"
+      },
+      "originals": {
+        "items": {
+          "properties": {
+            "identifier": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            }
+          },
+          "type": "object",
+          "required": [
+            "identifier",
+            "url"
+          ]
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "recorded",
+      "skipped"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}

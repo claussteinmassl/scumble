@@ -1,0 +1,188 @@
+modes[5]:
+  - id: creative
+    name: Magnific Creative
+    description: "Hallucinate detail. Presets, sliders, engine, prompt, and optimised-for control the style."
+    required[0]:
+    optional[9]: scale,presets,optimised,creativity,resemblance,hdr,fractality,engine,prompt
+    params:
+      scale:
+        enum[4]: 2x,4x,8x,16x
+        default: 2x
+      presets:
+        enum[4]: subtle,vivid,wild,custom
+        default: subtle
+      optimised:
+        enum[9]: StandardUltra,SoftPortrait,HardPortrait,ArtAndIllustration,VideoGameAssets,NatureAndLandscapes,FilmAndPhotography,ThreeDRenders,ScienceFictionAndHorror
+        default: StandardUltra
+      creativity:
+        type: integer
+        min: -10
+        max: 10
+        default: -3
+      resemblance:
+        type: integer
+        min: -10
+        max: 10
+        default: 3
+      hdr:
+        type: integer
+        min: -10
+        max: 10
+        default: 0
+      fractality:
+        type: integer
+        min: -10
+        max: 10
+        default: 0
+      engine:
+        enum[4]: automatic,magnific_illusio,magnific_sharpy,magnific_sparkle
+        default: automatic
+      prompt:
+        type: string
+        max: 2000
+  - id: ultra-sublime
+    name: Magnific Precision (sublime)
+    description: Most versatile Precision upscaler with subtle creative touch; best in most cases; shines at 4x. No ultraDetail.
+    required[0]:
+    optional[4]: scale,sharpness,grain,precisionPreset
+    params:
+      scale:
+        enum[4]: 2x,4x,8x,16x
+        default: 2x
+      sharpness:
+        type: integer
+        min: 0
+        max: 100
+        default: 7
+      grain:
+        type: integer
+        min: 0
+        max: 100
+        default: 4
+      precisionPreset:
+        enum[3]: balanced,portraits,grainyAnalog
+  - id: ultra-photo
+    name: Magnific Precision (photo)
+    description: "Most faithful to original, zero creativity; photographers' choice; ideal 2x for large professional photos."
+    required[0]:
+    optional[5]: scale,sharpness,grain,ultraDetail,precisionPreset
+    params:
+      scale:
+        enum[1]: 2x
+        default: 2x
+      sharpness:
+        type: integer
+        min: 0
+        max: 100
+        default: 7
+      grain:
+        type: integer
+        min: 0
+        max: 100
+        default: 4
+      ultraDetail:
+        type: integer
+        min: 0
+        max: 100
+        default: 7
+      precisionPreset:
+        enum[3]: balanced,portraits,grainyAnalog
+  - id: ultra-denoiser
+    name: Magnific Precision (photo denoiser)
+    description: "Denoiser effect, similar to Photo, strong on photography. 2x only."
+    required[0]:
+    optional[5]: scale,sharpness,grain,ultraDetail,precisionPreset
+    params:
+      scale:
+        enum[1]: 2x
+        default: 2x
+      sharpness:
+        type: integer
+        min: 0
+        max: 100
+        default: 7
+      grain:
+        type: integer
+        min: 0
+        max: 100
+        default: 4
+      ultraDetail:
+        type: integer
+        min: 0
+        max: 100
+        default: 7
+      precisionPreset:
+        enum[3]: balanced,portraits,grainyAnalog
+  - id: ultra
+    name: Magnific Precision v1 (high HDR)
+    description: "Original Precision; tougher stronger HDR-like look, more halos. 2x only."
+    required[0]:
+    optional[5]: scale,sharpness,grain,ultraDetail,precisionPreset
+    params:
+      scale:
+        enum[1]: 2x
+        default: 2x
+      sharpness:
+        type: integer
+        min: 0
+        max: 100
+        default: 7
+      grain:
+        type: integer
+        min: 0
+        max: 100
+        default: 4
+      ultraDetail:
+        type: integer
+        min: 0
+        max: 100
+        default: 7
+      precisionPreset:
+        enum[3]: balanced,portraits,grainyAnalog
+paramGuidance:
+  creative:
+    creativity: Allows extra AI detail/realism; high may create unusual results; low stays closer to original.
+    hdr: Increases definition/detail; very high may look artificial or blotchy.
+    resemblance: High stays closer but may blotch; low gives freedom and may stray.
+    fractality: Detail per square pixel; low = less detail/fewer glitches/reduce vertical bands; high = intricate artistic detail.
+    engine: "magnific_illusio: illustrations/removes JPEG artifacts; magnific_sharpy: sharpest for photos/may add JPEG artifacts; magnific_sparkle: balanced/reduces JPEG artifacts; automatic is default."
+  precision:
+    sharpness: Sharpens edges/textures; high may look artificial.
+    grain: 7-12 preserves original grain for realistic photo/film; high is artistic/experimental; 0 for vector/noise-free.
+creativePresets:
+  subtle:
+    creativity: -3
+    resemblance: 3
+    hdr: 0
+    fractality: 0
+  vivid:
+    creativity: 2
+    resemblance: -1
+    hdr: 1
+    fractality: 0
+  wild:
+    creativity: 3
+    resemblance: -1
+    hdr: 1
+    fractality: -3
+  custom:
+    creativity: 0
+    resemblance: 2
+    hdr: -2
+    fractality: 0
+precisionMacros:
+  note: ultra-sublime strips ultraDetail when applying macros
+  values:
+    balanced:
+      sharpness: 7
+      grain: 7
+      ultraDetail: 7
+    portraits:
+      sharpness: 12
+      grain: 7
+      ultraDetail: 9
+    grainyAnalog:
+      sharpness: 5
+      grain: 12
+      ultraDetail: 8
+instruction: "Pick one `id` as `mode` in `images_upscale`; supply only that mode's `optional` params. Mode defaults to `creative`. Use `precisionPreset` with a precision mode as a slider macro (sliders override). User's saved presets: call `images_upscale_presets_list`."

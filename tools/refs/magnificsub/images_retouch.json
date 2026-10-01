@@ -1,0 +1,137 @@
+{
+  "name": "images_retouch",
+  "title": "Retouch Image Region",
+  "description": "Edit ONE region of an image, leaving the rest untouched. `maskCreationIdentifier` is a black/white mask the same size as the image: white marks the region to change. mode `replace` needs a `prompt` describing the result; `erase` removes what is masked. Whole-image sharpness/quality: `images_upscale`. Extend canvas/free space: `images_expand`. Whole-image creative rework only: `images_generate` with a reference.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "creationIdentifier": {
+        "description": "Image creation identifier (import uploads first).",
+        "type": "string"
+      },
+      "maskCreationIdentifier": {
+        "description": "Mask creation identifier. Same pixel size as the image; white = change, black = keep.",
+        "type": "string"
+      },
+      "mode": {
+        "description": "`replace` generates from `prompt`; `erase` removes the masked region. Default replace.",
+        "enum": [
+          "replace",
+          "erase"
+        ],
+        "type": "string"
+      },
+      "prompt": {
+        "description": "What the masked region should become. Required for `replace`.",
+        "type": "string"
+      },
+      "model": {
+        "description": "A slug from retouch_models_list whose `retouchModes` includes `mode`. Omit (or `auto`) to let Auto pick.",
+        "type": "string"
+      },
+      "resolution": {
+        "description": "One of the model's `resolutions` in retouch_models_list. Omit for its `defaultResolution`; models without `resolutions` take none.",
+        "type": "string"
+      },
+      "folderReference": {
+        "description": "From `folders_list`. Omit \u2192 the user's Personal project. Does NOT persist: once the user names a target, pass it on EVERY later generation/edit call.",
+        "type": "string"
+      }
+    },
+    "required": [
+      "creationIdentifier",
+      "maskCreationIdentifier"
+    ]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "creation": {
+        "properties": {
+          "identifier": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "expectTime": {
+            "description": "Seconds left; 0 once terminal.",
+            "type": "integer"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "credits": {
+            "type": "integer"
+          },
+          "creditsNote": {
+            "type": "string"
+          },
+          "webUrl": {
+            "type": "string"
+          },
+          "designerUrl": {
+            "type": "string"
+          }
+        },
+        "type": "object",
+        "required": [
+          "identifier",
+          "status"
+        ]
+      },
+      "creations": {
+        "items": {
+          "properties": {
+            "identifier": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "expectTime": {
+              "description": "Seconds left; 0 once terminal.",
+              "type": "integer"
+            },
+            "tool": {
+              "type": "string"
+            },
+            "credits": {
+              "type": "integer"
+            },
+            "creditsNote": {
+              "type": "string"
+            },
+            "webUrl": {
+              "type": "string"
+            },
+            "designerUrl": {
+              "type": "string"
+            }
+          },
+          "type": "object",
+          "required": [
+            "identifier",
+            "status"
+          ]
+        },
+        "type": "array"
+      },
+      "partialFailure": {
+        "description": "Some outputs queued, the rest stopped here.",
+        "type": "string"
+      },
+      "instruction": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "instruction"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "openWorldHint": false
+  }
+}

@@ -1,0 +1,140 @@
+{
+  "name": "images_models_list",
+  "title": "List Image Models",
+  "description": "TTI model catalog as lean TOON text. `search` filters by name, slug, family (gpt, seedream, flux\u2026), description, or tags. Set `includePreviews` only when the caller needs model preview images.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "search": {
+        "description": "Case-insensitive.",
+        "type": "string"
+      },
+      "onlyRecommended": {
+        "description": "When true, returns only models with an `agentRecommendation`.",
+        "type": "boolean"
+      },
+      "includePreviews": {
+        "description": "When true, include the model preview image URL. Omit for a smaller catalog.",
+        "type": "boolean"
+      }
+    }
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "models": {
+        "items": {
+          "properties": {
+            "slug": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "family": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "tool": {
+              "type": "string"
+            },
+            "tags": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "beta": {
+              "type": "boolean"
+            },
+            "expectedGenerationTime": {
+              "type": "number"
+            },
+            "aspectRatios": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "resolutions": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "qualities": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "supportsReferences": {
+              "type": "boolean"
+            },
+            "referenceTypes": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "requiredInputs": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "extraSettings": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "requiresPremium": {
+              "type": "boolean"
+            },
+            "previewImageUrl": {
+              "type": "string"
+            },
+            "agentRecommendation": {
+              "properties": {
+                "tier": {
+                  "type": "string"
+                },
+                "rank": {
+                  "type": "integer"
+                },
+                "useFor": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "summary": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "instruction": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "models",
+      "instruction"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}

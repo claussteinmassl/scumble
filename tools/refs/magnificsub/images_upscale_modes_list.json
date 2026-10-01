@@ -1,0 +1,15 @@
+{
+  "name": "images_upscale_modes_list",
+  "title": "List Image Upscale Modes",
+  "description": "Per-mode params, scales, defaults, macros, and guidance for `images_upscale`. Read before calling it.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {}
+  },
+  "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}

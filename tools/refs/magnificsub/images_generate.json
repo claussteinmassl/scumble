@@ -1,0 +1,266 @@
+{
+  "name": "images_generate",
+  "title": "Generate Image",
+  "description": "Generate images, or rework one via references. NOT pixel-preserving: an edit that must keep the rest intact routes to a dedicated tool first \u2014 sharpness/quality: `images_upscale`; free space/extend canvas/new ratio keeping content: `images_expand`; one region: `images_retouch`; crop/exact pixels: `images_crop`/`images_resize`. No refs=TTI. references[] (max 12; see field docs). Output is opaque unless `transparentBackground` is set on a model that supports it; otherwise chain `images_remove_background` after. Defaults: mode=auto, ratio=1:1, count<=8. resolution/quality/variant/tier per images_models_list. UI clients: after generating, MUST call `creations_show` with all identifiers; never stop at links.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "prompt": {
+        "description": "Prompt. With brandKitId, keep it SHORT: topic plus the user's hard constraints only (`no text`, `logo top right`). Kit and template own look \u2014 do not invent lighting, composition, typography, or a cinematic centerpiece, and do not restate brand identity. A library reference (character/product/locations) may be mentioned as `@<name>` (its library_list `name`) where it appears in the scene; the server rewrites the token into the reference description.",
+        "type": "string"
+      },
+      "brandKitId": {
+        "description": "Brand kit sqid (the `id` from brand_kit_list/brand_kit_get). When set, the image is generated on-brand with Magnific One: brand palette, logo, typography and reference imagery are applied automatically. Do not restate identity in the prompt. A kit sent with another model is switched to Magnific One automatically \u2014 tell the user when the response says so. Draft (`extraSettings.draft`) takes no kit. The finished image gets a brand check, read as `brandCheck` on creations_wait/creations_get; never call an image on-brand before that check is `ready`.",
+        "type": "string"
+      },
+      "templateSlug": {
+        "description": "Content template `slug` from the kit (brand_kit_get.templates); requires brandKitId. Pass only if they asked for that format. Applies that content type's recipe; the prompt stays short.",
+        "type": "string"
+      },
+      "logoVariant": {
+        "description": "Logo mark `sqid` from brand_kit_get.logo_marks; requires brandKitId. Pins that mark for this generation only. Omit to use the kit primary logo.",
+        "type": "string"
+      },
+      "channel": {
+        "description": "What this image is FOR, so the kit's surface-scoped rules apply. Pass only when they said it; omit when unsure \u2014 a wrong surface applies rules the brand confined elsewhere. A format (youtube_thumbnail, youtube_banner, instagram_story, instagram_reel_cover, instagram_post, linkedin_banner_personal, linkedin_banner_company, linkedin_post, tiktok_video_cover, x_banner, x_post, facebook_cover, facebook_post, facebook_event_cover, pinterest_pin, og_image, luma_event) or a medium (digital, social, print, video, presentation, packaging, merch, ooh). A format also satisfies its medium, so `print` covers what no format does.",
+        "type": "string"
+      },
+      "validationRunId": {
+        "description": "Brand Kit validation run id; pair with validationScenarioKey. The persisted scenario overrides generation args.",
+        "type": "string"
+      },
+      "validationScenarioKey": {
+        "description": "recommendedScenarios[].key; requires validationRunId.",
+        "type": "string"
+      },
+      "mode": {
+        "description": "Use `auto` unless the user named a model; then take its `slug` from images_models_list. Naming trap: Nano Banana 2 = `imagen-nano-banana-2-flash`; `imagen-nano-banana-2` is Nano Banana Pro. With brandKitId the server always generates with `magnific-one` (Brand Kit only works with it) and returns `modelSwitched` when another mode was sent; never suggest another model for a branded image.",
+        "default": "auto",
+        "type": "string"
+      },
+      "customModelId": {
+        "description": "Picker identifier from images_models_settings when required by the selected model.",
+        "type": "string"
+      },
+      "aspectRatio": {
+        "description": "Default 1:1; edits may snap.",
+        "enum": [
+          "1:1",
+          "21:9",
+          "16:9",
+          "9:16",
+          "2:3",
+          "3:4",
+          "1:2",
+          "2:1",
+          "5:4",
+          "4:5",
+          "3:2",
+          "4:3"
+        ],
+        "type": "string"
+      },
+      "references": {
+        "description": "Max 12.",
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "description": "image = any photo you have, incl. of a person/product to keep consistent. character/product/locations = pre-built library asset, never a creation. style = library LoRA, or a creation as style photo.",
+              "enum": [
+                "image",
+                "style",
+                "character",
+                "product",
+                "locations"
+              ],
+              "type": "string"
+            },
+            "identifier": {
+              "description": "creation identifier for image/style-photo; numeric `id` from library_list for character/product/locations/style-LoRA. Never a raw upload id or URL: import a URL with `creations_upload_image`, a local file with `creations_request_upload` + `creations_finalize_upload`.",
+              "type": "string"
+            }
+          },
+          "type": "object",
+          "required": [
+            "type",
+            "identifier"
+          ]
+        },
+        "type": "array"
+      },
+      "count": {
+        "description": "1..8. N variants of ONE prompt = one call with count=N, never N separate calls.",
+        "minimum": 1,
+        "maximum": 8,
+        "type": "integer"
+      },
+      "seed": {
+        "description": "Same seed + same settings reproduce a result. Omit for a random one. With count>1 each variant uses seed+index. Read back as `seed` in `creations_get`.",
+        "minimum": 0,
+        "maximum": 4294967295,
+        "type": "integer"
+      },
+      "resolution": {
+        "description": "Supported values per model \u2014 see `images_models_list.resolutions`. Omitted values use the model default.",
+        "type": "string"
+      },
+      "quality": {
+        "description": "Supported values per model \u2014 see `images_models_list.qualities`. Omitted values use the model default.",
+        "type": "string"
+      },
+      "variant": {
+        "description": "Submodel, e.g. gpt-2-mini `flare`|`sunburst`. See `images_models_list.variants`; dropped on a model without variants.",
+        "type": "string"
+      },
+      "tier": {
+        "description": "Submodel quality tier, e.g. recraft-v4-1 `mid`|`pro`. Affects cost. See `images_models_list.tiers`.",
+        "type": "string"
+      },
+      "transparentBackground": {
+        "description": "Alpha background. Only models flagging `transparentBackground` in images_models_list; elsewhere chain `images_remove_background`.",
+        "type": "boolean"
+      },
+      "extraSettings": {
+        "description": "Model-specific. Keys/values via images_models_settings. Needs explicit mode. `magnific-one`: `draft` for an exploration grid.",
+        "type": "object"
+      },
+      "draftTileIdentifier": {
+        "description": "Make a Draft tile final: its creation identifier (creations_wait results.tiles). mode=magnific-one, no extraSettings.draft. Send the Draft's prompt unchanged to keep the tile's style and framing; edited text is used as written.",
+        "type": "string"
+      },
+      "folderReference": {
+        "description": "From `folders_list`. Omit \u2192 the user's Personal project. Does NOT persist: once the user names a target, pass it on EVERY later generation/edit call.",
+        "type": "string"
+      }
+    },
+    "required": [
+      "prompt"
+    ]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "creation": {
+        "properties": {
+          "identifier": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "expectTime": {
+            "description": "Seconds left; 0 once terminal.",
+            "type": "integer"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "credits": {
+            "type": "integer"
+          },
+          "creditsNote": {
+            "type": "string"
+          },
+          "webUrl": {
+            "type": "string"
+          },
+          "designerUrl": {
+            "type": "string"
+          }
+        },
+        "type": "object",
+        "required": [
+          "identifier",
+          "status"
+        ]
+      },
+      "creations": {
+        "items": {
+          "properties": {
+            "identifier": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "expectTime": {
+              "description": "Seconds left; 0 once terminal.",
+              "type": "integer"
+            },
+            "tool": {
+              "type": "string"
+            },
+            "credits": {
+              "type": "integer"
+            },
+            "creditsNote": {
+              "type": "string"
+            },
+            "webUrl": {
+              "type": "string"
+            },
+            "designerUrl": {
+              "type": "string"
+            }
+          },
+          "type": "object",
+          "required": [
+            "identifier",
+            "status"
+          ]
+        },
+        "type": "array"
+      },
+      "partialFailure": {
+        "description": "Some outputs queued, the rest stopped here.",
+        "type": "string"
+      },
+      "instruction": {
+        "type": "string"
+      },
+      "adjustments": {
+        "items": {
+          "properties": {
+            "field": {
+              "type": "string"
+            },
+            "from": {
+              "type": "string"
+            },
+            "to": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "modelSwitched": {
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "required": [
+      "instruction"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "openWorldHint": false
+  }
+}
