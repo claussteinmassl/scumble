@@ -11,9 +11,14 @@
 //   - The redirect is http://127.0.0.1:<ephemeral port>/callback. A registered client is bound to its redirect URI, so
 //     the client is stored with the URI it was registered for, and a sign-in on another port registers again
 //     (registration is cheap; the old client only ever refreshes the tokens it was given).
-//   - Everything (the client, the tokens, the PKCE verifier while a sign-in runs, the plan's name) is one JSON value in
-//     keys.js under "magnificsub" (safeStorage), never in settings.json. The store is injected: { get, set, clear }
-//     like keys.js, so the tests use a fake.
+//   - The authorization URL always carries prompt=login: the realm has no login form of its own and sends the browser
+//     to www.magnific.com's login, which hands back the account signed in there. Without prompt=login Keycloak would
+//     reuse a remembered SSO session of the realm instead, perhaps of another account (one signed in through another
+//     MCP client), and complete the sign-in silently. The Settings row shows the account the browser handed over:
+//     the email from the token response's id_token.
+//   - Everything (the client, the tokens, the PKCE verifier while a sign-in runs, the plan's name, the account's email)
+//     is one JSON value in keys.js under "magnificsub" (safeStorage), never in settings.json. The store is injected:
+//     { get, set, clear } like keys.js, so the tests use a fake.
 //   - The host is https://mcp.magnific.com. settings.magnificsub.base may name a loopback mock
 //     (http://127.0.0.1:<port>, nothing else), and then only a token that starts with "test-" goes there, while such
 //     a token never goes to Magnific: checkToken() before any request, and guardFetch() on every request the SDK makes.
@@ -160,7 +165,7 @@ function storedPin(keys) {
 
 // ---- the stored value -----------------------------------------------------------------------------------------------
 
-/** The stored JSON ({} when none): { server, redirect, client, tokens, tokenOrigin, codeVerifier, account }. */
+/** The stored JSON ({} when none): { server, redirect, client, tokens, tokenOrigin, codeVerifier, account, email }. */
 function load(keys) {
     try { return JSON.parse(keys.get(NAME) || "{}") || {}; } catch (_) { return {}; }
 }
@@ -225,6 +230,10 @@ class Provider {
         const u = new URL(String(url));
         const ok = this.server.test ? u.origin === new URL(this.server.url).origin : publicHttps(u);
         if (!ok) throw new Error(`Magnific (subscription): refused to open the sign-in page at ${u.origin}.`);
+        // the login flow every time: the realm then goes through magnific.com's own login, so the account is the one
+        // signed in on magnific.com in the browser, never a remembered realm session of another account (one signed in
+        // through another MCP client), which would otherwise complete the authorization at once
+        u.searchParams.set("prompt", "login");
         await this.open(u.toString());
     }
 }
@@ -292,6 +301,20 @@ async function accountOf(client) {
     } catch (_) { return ""; }
 }
 
+/**
+ * The account's email (or its preferred_username) from an id_token, or "". The payload is decoded for display only: no
+ * signature check, since nothing is decided on it (the tokens themselves came from the token endpoint over TLS).
+ */
+function emailOf(idToken) {
+    try {
+        const part = String(idToken || "").split(".")[1];
+        if (!part) return "";
+        const claims = JSON.parse(Buffer.from(part, "base64url").toString("utf8"));
+        const v = [claims.email, claims.preferred_username].find((x) => typeof x === "string" && x.trim());
+        return v ? v.trim().slice(0, 200) : "";
+    } catch (_) { return ""; }
+}
+
 /** A store like keys.js in memory: a sign-in in progress writes here, and only a finished one reaches keys.js. */
 function memoryStore() {
     const data = {};
@@ -344,7 +367,9 @@ async function signIn(ctx) {
             if (!open.signedIn) throw new Error("Magnific (subscription): the server refused the new sign-in.");
         }
         const account = await accountOf(open.client);
-        save(stage, { codeVerifier: undefined, account: account || undefined });
+        // the SDK keeps the id_token in the stored tokens; only the email it names is kept beside them
+        const email = emailOf((load(stage).tokens || {}).id_token);
+        save(stage, { codeVerifier: undefined, account: account || undefined, email: email || undefined });
         // a Cancel that came after the browser's code: the new sign-in is dropped, the stored one stays
         if (ctx.signal && ctx.signal.aborted) throw new Error("Magnific (subscription): the sign-in was cancelled.");
         keys.set(NAME, stage.get(NAME));
@@ -364,12 +389,15 @@ function signOut(ctx) {
     return status(ctx);
 }
 
-/** { signedIn, account? } from the store alone (no request): signed in when it holds tokens for this server. */
+/** { signedIn, account?, email? } from the store alone (no request): signed in when it holds tokens for this server. */
 function status(ctx) {
     const s = load(ctx.keys);
     const server = serverOf(ctx.settings);
     const signedIn = !!(s.tokens && s.tokens.access_token && s.server === server.url);
-    return signedIn && s.account ? { signedIn, account: s.account } : { signedIn };
+    const out = { signedIn };
+    if (signedIn && s.account) out.account = s.account;
+    if (signedIn && s.email) out.email = s.email;
+    return out;
 }
 
 /** The stored tokens, for scrubbing error texts. */
@@ -381,6 +409,6 @@ function secretsOf(keys) {
 module.exports = {
     NAME, HOST, SCOPE, RESIGN, NOT_SIGNED_IN,
     signIn, signOut, status,
-    serverOf, testBase, checkToken, guardFetch, storedPin, privateHost, publicHttps, scrub, secretsOf,
+    serverOf, testBase, checkToken, guardFetch, storedPin, privateHost, publicHttps, scrub, secretsOf, emailOf,
     Provider, load, sdk,
 };

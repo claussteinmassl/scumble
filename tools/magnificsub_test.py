@@ -10,14 +10,15 @@ waits in providers:status, and this script GETs it (the mock's 302 lands on the 
 - the rows signed out: every provider of main's providers:list (less those that share a key) has its row; every row but
   Magnific (subscription) has its key input, Save and Clear; that one reads "not signed in" with Sign in and no input,
   no key hint, no "check balance"; the four recipes' provider options read "(not signed in)";
-- Sign in from the row: "waiting for the browser…" with Cancel, then "signed in (Mock Plan)" with Sign out and "check
-  balance", which answers "1000 credits (Mock Plan)"; the options lose "(not signed in)"; the cutout list offers
+- Sign in from the row: "waiting for the browser…" with Cancel, then "signed in as mock.user@example.com (Mock Plan)"
+  with Sign out and "check balance", which answers "1000 credits (Mock Plan)"; the options lose "(not signed in)"; the cutout list offers
   Magnific (subscription), last, and does not select it; the other rows are the same as signed out (and after Sign out);
 - a cutout click with nothing picked (no free backend in a gate profile) sends nothing and says to pick it;
 - one run each through the window: a Creative upscale of a small picture (the document twice as large), a retouch of a
   selection (a result layer), a cutout of that layer (its mask about half kept), Generate new (a 1024 x 1024 base);
   each status line names the 90 credits, and the mock saw each tool once with valid arguments;
-- Sign out from the row: "not signed in" again, keys no longer hold magnificsub, the cutout list drops it.
+- Sign out from the row: "not signed in" again, the hint says the next Sign in asks for Magnific's login, keys no
+  longer hold magnificsub, the cutout list drops it.
 
 It refuses a profile that holds a magnificsub sign-in (a real one is never overwritten). The magnificsub setting, the
 remembered providers and the selected recipe are put back at the end whatever happens.
@@ -125,7 +126,7 @@ return { url: st.url, pending: st.pending, row };
 SIGNED_IN = """
 const row = await until(() => { const r = rows().find((x) => x.label === __LABEL__); return r && /^signed in/.test(r.state) ? r : null; }, 15000);
 if (!row) throw new Error("the row never read signed in: " + JSON.stringify(rows().find((x) => x.label === __LABEL__)));
-if (!/^signed in \\(Mock Plan\\)/.test(row.state) || JSON.stringify(row.buttons) !== '["Sign out"]' || row.input || !/check balance/.test(row.state)) throw new Error("the signed-in row: " + JSON.stringify(row));
+if (!/^signed in as mock\\.user@example\\.com \\(Mock Plan\\)/.test(row.state) || JSON.stringify(row.buttons) !== '["Sign out"]' || row.input || !/check balance/.test(row.state)) throw new Error("the signed-in row: " + JSON.stringify(row));
 const k = await window.scumble.keys.list();
 const hint = (k.keys || {}).magnificsub && k.keys.magnificsub.hint;
 if (hint && row.state.includes(hint)) throw new Error("the row shows keys.js's hint");
@@ -218,6 +219,8 @@ if (!btn) throw new Error("no Sign out button");
 btn.click();
 const row = await until(() => { const r = rows().find((x) => x.label === __LABEL__); return r && r.state === "not signed in" ? r : null; }, 10000);
 if (!row || JSON.stringify(row.buttons) !== '["Sign in"]') throw new Error("after Sign out: " + JSON.stringify(rows().find((x) => x.label === __LABEL__)));
+const hint = (subRow().querySelector(".shell-note") || {}).textContent || "";
+if (!/^Signed out\\. The next Sign in asks for Magnific's login/.test(hint)) throw new Error("the hint after Sign out: " + hint);
 const k = await window.scumble.keys.list();
 if ((k.keys || {}).magnificsub && k.keys.magnificsub.set) throw new Error("keys still hold magnificsub");
 const option = optionOf("magnificsub_generate");

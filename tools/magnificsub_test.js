@@ -26,6 +26,8 @@ function check(what, ok, detail) {
     results.push(!!ok);
     console.log(`[${ok ? "ok" : "FAIL"}] ${what}${detail ? ": " + detail : ""}`);
 }
+// the status of a sign-in at the mock: the plan's name, and the email from the mock's id_token
+const SIGNED_IN = { signedIn: true, account: "Mock Plan", email: "mock.user@example.com" };
 const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const short = (v) => { const s = typeof v === "string" ? v : JSON.stringify(v); return s && s.length > 500 ? s.slice(0, 500) + " ..." : s; };
 async function section(name, fn) {
@@ -49,7 +51,7 @@ function fakeKeys() {
 const stored = (keys) => { try { return JSON.parse(keys.data.magnificsub || "{}"); } catch (_) { return null; } };
 function remember(keys) {
     const t = (stored(keys) || {}).tokens || {};
-    for (const k of [t.access_token, t.refresh_token]) if (k) SEEN_TOKENS.add(k);
+    for (const k of [t.access_token, t.refresh_token, t.id_token]) if (k) SEEN_TOKENS.add(k);
 }
 
 /** The global fetch, recording { url, method, auth } of every request. */
@@ -144,7 +146,7 @@ async function main() {
             remember(keys);
             const s = stored(keys);
             const reg = mock.oauth.registrations[0] || {};
-            check("signIn resolves to signed in, with the plan's name", eq(st, { signedIn: true, account: "Mock Plan" }), short(st));
+            check("signIn resolves to signed in, with the plan's name and the account's email", eq(st, SIGNED_IN), short(st));
             check("the client registered itself as Scumble (public, PKCE, the loopback redirect, the scope)", mock.oauth.registrations.length === 1 && reg.client_name === "Scumble"
                 && reg.token_endpoint_auth_method === "none" && eq(reg.grant_types, ["authorization_code", "refresh_token"]) && eq(reg.response_types, ["code"])
                 && reg.scope === "openid profile email mcp:custom-audience" && /^http:\/\/127\.0\.0\.1:\d+\/callback$/.test(reg.redirect_uris[0]), short(reg));
@@ -152,12 +154,17 @@ async function main() {
             check("the browser was sent to the realm's authorization page with an S256 challenge, a state and the resource",
                 open.opened.length === 1 && open.opened[0].startsWith(mock.base + "/realm/auth?") && a.code_challenge_method === "S256" && /^[A-Za-z0-9_-]{43}$/.test(a.code_challenge || "")
                 && !!a.state && a.redirect_uri === reg.redirect_uris[0] && a.resource === mock.base + "/", short(a));
+            const url = new URL(open.opened[0] || "http://x/");
+            check("the authorization URL asks for the login page (prompt=login), and the mock saw it",
+                url.searchParams.getAll("prompt").join() === "login" && a.prompt === "login" && !!url.searchParams.get("code_challenge") && !!url.searchParams.get("client_id"), short(a));
+            check("the store keeps the id_token once, in the SDK's tokens, and the email beside it (no copy of the token)",
+                !!(s && s.tokens && s.tokens.id_token) && s.email === "mock.user@example.com" && Object.keys(s).filter((k) => k !== "tokens").every((k) => !JSON.stringify(s[k]).includes(s.tokens.id_token)), short(s && Object.keys(s)));
             check("the loopback answered the browser with the short page", open.status === 200 && /Signed in to Magnific\. You can close this tab\./.test(open.page || ""), open.page);
             check("the code was traded (authorization_code) once", mock.oauth.grants.filter((g) => g.grant_type === "authorization_code").length === 1, short(mock.oauth.grants));
             check("the store holds one JSON value under magnificsub: server, redirect, client, test tokens, the account; no verifier left",
                 Object.keys(keys.data).length === 1 && s && s.server === mock.base && s.redirect === reg.redirect_uris[0] && s.client.client_id === reg.client_id
                 && /^test-at-/.test(s.tokens.access_token) && /^test-rt-/.test(s.tokens.refresh_token) && s.account === "Mock Plan" && !("codeVerifier" in s), short(s && Object.keys(s)));
-            check("status: signed in", eq(auth.status({ keys, settings }), { signedIn: true, account: "Mock Plan" }));
+            check("status: signed in", eq(auth.status({ keys, settings }), SIGNED_IN));
             check("... and signed out for another server (the real one)", eq(auth.status({ keys, settings: {} }), { signedIn: false }));
             check("no credential went to the authorization page or anywhere outside the mock", rec.log.every((r) => r.url.startsWith(mock.base)) && mock.http.filter((h) => h.path === "/realm/auth").every((h) => !h.auth));
         });
@@ -178,9 +185,13 @@ async function main() {
             const challenge = crypto.createHash("sha256").update(verifier).digest("base64url");
             const authorize = async (redirect) => {
                 const u = new URL(mock.base + "/realm/auth");
-                for (const [k, v] of Object.entries({ response_type: "code", client_id: reg.client_id, redirect_uri: redirect, code_challenge: challenge, code_challenge_method: "S256", scope: auth.SCOPE })) u.searchParams.set(k, v);
+                for (const [k, v] of Object.entries({ response_type: "code", client_id: reg.client_id, redirect_uri: redirect, code_challenge: challenge, code_challenge_method: "S256", scope: auth.SCOPE, prompt })) if (v) u.searchParams.set(k, v);
                 return fetch(u, { redirect: "manual" });
             };
+            let prompt = "";
+            const r0 = await authorize(reg.redirect_uris[0]);
+            check("the mock refuses an authorization without prompt=login", r0.status === 400 && (await r0.json()).error_description === "prompt=login required");
+            prompt = "login";
             const token = (code, v, redirect) => fetch(mock.base + "/realm/token", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ grant_type: "authorization_code", code, code_verifier: v, client_id: reg.client_id, redirect_uri: redirect }) });
             let r = await authorize("http://127.0.0.1:1/callback");
             check("an unregistered redirect URI is refused at the authorization page", r.status === 400);
@@ -197,6 +208,27 @@ async function main() {
             r = await token(code, verifier, reg.redirect_uris[0]);
             const t = await r.json();
             check("the right verifier and redirect get test tokens", r.status === 200 && /^test-at-/.test(t.access_token));
+        });
+
+        await section("4b. the account shown: email, preferred_username, none", async () => {
+            const fake = (claims) => `e30.${Buffer.from(JSON.stringify(claims)).toString("base64url")}.`;
+            check("emailOf: the email, else preferred_username, else \"\" (no id_token, a broken one)",
+                auth.emailOf(fake({ email: "a@b.example", preferred_username: "ab" })) === "a@b.example" && auth.emailOf(fake({ preferred_username: "ab" })) === "ab"
+                && auth.emailOf(fake({ sub: "x" })) === "" && auth.emailOf(undefined) === "" && auth.emailOf("not-a-jwt") === "" && auth.emailOf("a.%%%.b") === "");
+            const saved = mock.script.idClaims;
+            try {
+                const k = fakeKeys();
+                mock.script.idClaims = { preferred_username: "mockuser" };
+                let st = await auth.signIn({ keys: k, settings, openExternal: browser(), fetch: rec });
+                remember(k);
+                check("without an email in the id_token the status names the preferred_username", eq(st, { signedIn: true, account: "Mock Plan", email: "mockuser" }), short(st));
+                mock.script.idClaims = null;
+                st = await auth.signIn({ keys: k, settings, openExternal: browser(), fetch: rec });
+                remember(k);
+                check("without an id_token the status names no account (and the one before is not kept)", eq(st, { signedIn: true, account: "Mock Plan" }) && !("email" in stored(k)), short(st));
+            } finally { mock.script.idClaims = saved; }
+            check("every authorization the mock saw asked for prompt=login, but the one test 4 sent without it",
+                mock.oauth.authorizations.filter((q) => q.prompt !== "login").length === 1, String(mock.oauth.authorizations.length));
         });
 
         await section("5. call", async () => {
@@ -600,7 +632,7 @@ async function main() {
             // the browser never answers: the sign-in times out
             const e1 = await throws(() => auth.signIn({ keys: k, settings, openExternal: async () => {}, fetch: rec, timeoutMs: 200 }));
             check("a re-sign-in that times out fails with the timeout", /the sign-in timed out/.test(e1 || ""), e1);
-            check("... and the stored sign-in is the one before, still signed in", k.data.magnificsub === before && eq(auth.status({ keys: k, settings }), { signedIn: true, account: "Mock Plan" }));
+            check("... and the stored sign-in is the one before, still signed in", k.data.magnificsub === before && eq(auth.status({ keys: k, settings }), SIGNED_IN));
             // the browser cannot be opened: the sign-in fails at once
             const e2 = await throws(() => auth.signIn({ keys: k, settings, openExternal: async () => { throw new Error("no browser"); }, fetch: rec }));
             check("a re-sign-in that fails (no browser) leaves the stored sign-in as it was", !!e2 && k.data.magnificsub === before, e2);
@@ -629,7 +661,7 @@ async function main() {
             const st = await auth.signIn({ keys: k, settings, openExternal: open, fetch: rec });
             remember(k);
             check("the wrong answers get 400 with a short page", answers.length === 3 && answers.every(([status, text]) => status === 400 && /does not belong to the sign-in/.test(text)), short(answers));
-            check("... the sign-in kept waiting and finished with the right answer (one code traded, the forged one never)", eq(st, { signedIn: true, account: "Mock Plan" })
+            check("... the sign-in kept waiting and finished with the right answer (one code traded, the forged one never)", eq(st, SIGNED_IN)
                 && eq(mock.oauth.grants.slice(g0).map((g) => g.grant_type), ["authorization_code"]), short(mock.oauth.grants.slice(g0)));
             // the right state with the realm's error ends the sign-in
             const k2 = fakeKeys();
@@ -1006,7 +1038,7 @@ async function main() {
             await browser()(pend.url);
             const st = await run;
             remember(store);
-            check("following the URL signs in; openExternal was never called", eq(st, { signedIn: true, account: "Mock Plan" }) && opened.length === 0 && eq(index.authStatus("magnificsub"), { signedIn: true, account: "Mock Plan" }), short(st));
+            check("following the URL signs in; openExternal was never called", eq(st, SIGNED_IN) && opened.length === 0 && eq(index.authStatus("magnificsub"), SIGNED_IN), short(st));
             check("describeAll: the row reads signed in", index.describeAll().find((x) => x.id === "magnificsub").signedIn === true);
             check("a test sign-in does not bring the window to the front (onSignedIn is for a real one)", fronted === 0);
             {
@@ -1041,7 +1073,7 @@ async function main() {
             await waitFor(() => index.authStatus("magnificsub").url);
             check("cancel: true while one waits", index.cancelSignIn("magnificsub") === true);
             const e3 = await throws(() => run2);
-            check("... the sign-in ends as cancelled, the stored one is kept, nothing pends", /the sign-in was cancelled/.test(e3 || "") && store.data.magnificsub === before && eq(index.authStatus("magnificsub"), { signedIn: true, account: "Mock Plan" }), e3);
+            check("... the sign-in ends as cancelled, the stored one is kept, nothing pends", /the sign-in was cancelled/.test(e3 || "") && store.data.magnificsub === before && eq(index.authStatus("magnificsub"), SIGNED_IN), e3);
             check("cancel with nothing waiting: false", index.cancelSignIn("magnificsub") === false);
             // a Cancel that comes after the browser's code arrived: the new sign-in is dropped all the same
             const ac = new AbortController();

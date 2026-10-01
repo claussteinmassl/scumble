@@ -139,6 +139,15 @@ and the gate (Task 3), and the docs (Task 4), then a live run with the user's ac
   still cost 75 credits (the picture stayed in the Magnific library).
 - In all 253 credits of the plan were spent on the run.
 
+### The account a sign-in gets (2026-10-01, after the live run)
+- A user once signed in to the realm with a client's account through another MCP client; the realm's remembered SSO
+  session then completed every Sign in from Scumble with that account at once. The realm has no login form of its
+  own: it sends the browser to www.magnific.com's login, which hands back the account signed in there.
+- Fixed: the authorization URL always carries `prompt=login` (Keycloak lists it), so the realm goes through
+  magnific.com's login every time; and the row shows "signed in as <email> (plan)", the email (or
+  `preferred_username`) from the token response's `id_token`, decoded for display only. After a Sign out the row's
+  hint says the next Sign in asks for the login. The mock refuses an authorization without `prompt=login`.
+
 ### What was built, as designed
 - `magnificsub_auth.js` (OAuth with PKCE and dynamic registration, the loopback redirect, the host rule, a sign-in that
   keeps the old one on failure), `magnificsub.js` (the session: upload, wait, download, the verbs, balance),
@@ -162,7 +171,7 @@ and the gate (Task 3), and the docs (Task 4), then a live run with the user's ac
   `magnificsub_pictures.js`. A creation tool that loses its connection is not sent again (no double charge).
 
 ### Tests that exist
-- `node tools/magnificsub_test.js` (plain Node, 171 checks) against `tools/magnificsub_mock.js`: sign-in, session,
+- `node tools/magnificsub_test.js` (plain Node, 187 checks) against `tools/magnificsub_mock.js`: sign-in, session,
   every verb's arguments against the copied schemas, upload retries, wait, host rule, retouch geometry, registry hook,
   a dropped connection (a paid tool sent once, a read sent again), upload and download redirects, the download cap.
 - `node tools/refs_layout_test.js` drives the adapter too: its capture plays the MCP server, so the retouch and

@@ -2078,14 +2078,18 @@ reasons are in `docs/PLAN_MAGNIFIC_SUB.md`. **Not run against the live service y
 against a mock.
 
 **The sign-in.** Settings › API providers shows no key field for this provider: the row reads "not signed in" with
-**Sign in**, "waiting for the browser…" with **Cancel**, or "signed in (plan)" with **Sign out** and "check
-balance". Sign in is OAuth with PKCE (S256) and dynamic client registration: Scumble registers its own public
+**Sign in**, "waiting for the browser…" with **Cancel**, or "signed in as <email> (plan)" with **Sign out** and "check
+balance" (the email or user name from the sign-in's `id_token`, decoded for display only). Sign in is OAuth with PKCE (S256) and dynamic client registration: Scumble registers its own public
 client with a loopback redirect (`http://127.0.0.1:<port>/callback`, an ephemeral port of the main process, listened
 on for one request and at most 10 minutes), opens the authorization URL with `shell.openExternal` and checks the
 `state` of the answer. It presents itself as Scumble, not as one of Magnific's plugins. The client information and
 the tokens are one JSON value under the name `magnificsub` in `keys.js` (safeStorage); nothing in `settings.json`.
-A cancelled or failed sign-in leaves the stored one untouched; Sign out forgets it. A run never opens a browser: a
-refresh that fails ends with "Sign in to Magnific again (Settings › API providers)."
+A cancelled or failed sign-in leaves the stored one untouched; Sign out forgets it. The authorization URL always
+carries `prompt=login`: the realm then goes through www.magnific.com's own login every time instead of reusing a
+remembered realm session (which once completed a sign-in with another account at once). So the sign-in uses the
+account signed in on magnific.com in the default browser; to use another account, sign in to that one on
+magnific.com first. A run never opens a browser: a refresh that fails ends with "Sign in to Magnific again
+(Settings › API providers)."
 
 **The host rule.** The server is fixed to `https://mcp.magnific.com`. A bearer token goes only there, the refresh
 goes only to the origin the sign-in recorded (a stored sign-in without one asks to sign in again), upload and

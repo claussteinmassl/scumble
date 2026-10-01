@@ -161,7 +161,10 @@ function json(res, status, body, headers = {}) {
  *           drop: [tool names] (the next tools/call of each named tool is recorded with `dropped: true` and its
  *           connection destroyed before the tool runs: a dropped connection, once per entry),
  *           putRedirect / getRedirect: { status, to, times? } (the next `times` (default 1) upload PUTs / asset GETs
- *           answer `status` with Location `to`; "self" is the URL asked)
+ *           answer `status` with Location `to`; "self" is the URL asked),
+ *           idClaims (the claims of the id_token every token answer carries; default an email and a preferred_username,
+ *           null for no id_token)
+ * The authorization endpoint refuses a request without prompt=login (400 invalid_request).
  */
 async function start({ port = 0, app = false } = {}) {
     const { Server } = require("@modelcontextprotocol/sdk/server/index.js");
@@ -173,7 +176,7 @@ async function start({ port = 0, app = false } = {}) {
     const calls = [];
     const httpLog = [];
     const oauth = { registrations: [], authorizations: [], grants: [], foreignTokens: [] };
-    const script = { drop: [], putRedirect: null, getRedirect: null, put: [], reject401: 0, refreshFails: false, realTokens: false, waitMs: 20, downloadUrl: null, resultUrl: null, noOriginals: ["images_generate"], credits: 90, result: null, expireAccess: null };
+    const script = { drop: [], putRedirect: null, getRedirect: null, put: [], reject401: 0, refreshFails: false, realTokens: false, waitMs: 20, downloadUrl: null, resultUrl: null, noOriginals: ["images_generate"], credits: 90, result: null, expireAccess: null, idClaims: { email: "mock.user@example.com", preferred_username: "mockuser" } };
     const clients = new Map();      // client_id -> registered metadata
     const codes = new Map();        // code -> { client_id, redirect_uri, challenge }
     const access = new Set();       // valid access tokens
@@ -188,6 +191,11 @@ async function start({ port = 0, app = false } = {}) {
         seq++;
         const prefix = script.realTokens ? "eyJreal" : "test";
         const t = { access_token: `${prefix}-at-${seq}-${crypto.randomUUID()}`, refresh_token: `${prefix}-rt-${seq}-${crypto.randomUUID()}`, token_type: "Bearer", expires_in: 300, scope: "openid profile email mcp:custom-audience" };
+        // an unsigned id_token like Keycloak's for scope openid (the client decodes it for display only)
+        if (script.idClaims) {
+            const part = (o) => b64url(Buffer.from(JSON.stringify(o)));
+            t.id_token = `${part({ alg: "none", typ: "JWT" })}.${part({ iss: base + "/realm", sub: "mock-user", ...script.idClaims })}.`;
+        }
         access.add(t.access_token);
         refresh.add(t.refresh_token);
         return t;
@@ -225,6 +233,8 @@ async function start({ port = 0, app = false } = {}) {
             if (!client.redirect_uris.includes(q.redirect_uri)) return json(res, 400, { error: "invalid_redirect_uri" });
             if (q.response_type !== "code" || q.code_challenge_method !== "S256" || !/^[A-Za-z0-9_-]{43}$/.test(q.code_challenge || "")) return json(res, 400, { error: "invalid_request", error_description: "S256 PKCE required" });
             if (!String(q.scope || "").split(" ").includes("mcp:custom-audience")) return json(res, 400, { error: "invalid_scope" });
+            // every sign-in must ask for the login page (an SSO session of another account must never answer it)
+            if (q.prompt !== "login") return json(res, 400, { error: "invalid_request", error_description: "prompt=login required" });
             const code = "code-" + crypto.randomUUID();
             codes.set(code, { client_id: q.client_id, redirect_uri: q.redirect_uri, challenge: q.code_challenge });
             const to = new URL(q.redirect_uri);

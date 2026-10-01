@@ -613,6 +613,8 @@ async function loadProviders() {
 
 // the last sign-in error of a provider, shown once in its row after the row is drawn again
 const authErrors = new Map();
+// the providers signed out in this window: their row's hint says which account the next Sign in gets
+const signedOutHere = new Set();
 
 /** After a sign-in or a sign-out: the lists, the rows, the recipe note and the LLM list read the new state. */
 async function authChanged() {
@@ -662,8 +664,11 @@ function oauthRow(p, st) {
     row.appendChild(label);
     const hint = document.createElement("span");
     hint.className = "shell-note";
-    hint.textContent = p.keyHint || "";
-    hint.title = p.keyHint || "";
+    const hintText = signedOutHere.has(p.id) && !st.signedIn && !st.pending
+        ? "Signed out. The next Sign in asks for Magnific's login: the account signed in on magnific.com in your browser."
+        : (p.keyHint || "");
+    hint.textContent = hintText;
+    hint.title = hintText;
     row.appendChild(hint);
     const btn = document.createElement("button");
     btn.type = "button";
@@ -677,10 +682,12 @@ function oauthRow(p, st) {
         btn.addEventListener("click", async () => { btn.disabled = true; await window.scumble.providers.cancelSignIn(p.id); });
     } else if (st.signedIn) {
         btn.textContent = "Sign out";
-        state.textContent = st.account ? `signed in (${st.account})` : "signed in";
+        // the account signed in (its email from the sign-in's id_token), so a wrong one is seen at once
+        const plan = st.account ? ` (${st.account})` : "";
+        state.textContent = st.email ? `signed in as ${st.email}${plan}` : `signed in${plan}`;
         btn.addEventListener("click", async () => {
             btn.disabled = true;
-            try { await window.scumble.providers.signOut(p.id); } catch (err) { authErrors.set(p.id, ipcText(err)); }
+            try { await window.scumble.providers.signOut(p.id); signedOutHere.add(p.id); } catch (err) { authErrors.set(p.id, ipcText(err)); }
             await authChanged();
         });
     } else {
@@ -689,6 +696,7 @@ function oauthRow(p, st) {
         btn.addEventListener("click", async () => {
             btn.disabled = true;
             authErrors.delete(p.id);
+            signedOutHere.delete(p.id);
             const run = window.scumble.providers.signIn(p.id);
             await renderProviders();   // the row reads "waiting for the browser…" with Cancel
             try { await run; } catch (err) { authErrors.set(p.id, ipcText(err)); }

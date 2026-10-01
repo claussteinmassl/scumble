@@ -611,7 +611,7 @@ function ready(ctx = {}) {
     return { ok: true };
 }
 
-/** { signedIn, account? } for the Settings row, from the store alone. */
+/** { signedIn, account?, email? } for the Settings row, from the store alone. */
 function status(ctx = {}) {
     return auth.status({ keys: ctx.keys || require("../keys"), settings: ctx.settings || require("../settings").get() });
 }

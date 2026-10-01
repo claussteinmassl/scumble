@@ -381,7 +381,7 @@ function oauthProvider(id) {
     return p;
 }
 
-/** { signedIn, account?, pending?, url? } from the store alone; `url` only for a test sign-in that waits. */
+/** { signedIn, account?, email?, pending?, url? } from the store alone; `url` only for a test sign-in that waits. */
 function authStatus(id) {
     const p = oauthProvider(id);
     const st = p.status(readyContext());
