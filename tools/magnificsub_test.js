@@ -1254,6 +1254,11 @@ async function main() {
             const UPSCALERS = ["magnific_creative", "magnific_precision", "magnific_precision_v1"];
             const shipped = fs.readdirSync(path.join(ROOT, "recipes")).filter((n) => n.endsWith(".json")).map((n) => n.slice(0, -5)).filter((id) => raw(id).providers && raw(id).providers.magnificsub).sort();
             check("magnificsub sits in exactly the mapped model recipes, the own ones, the two upscalers and the retouch", eq(shipped, [...Object.keys(SHARED), ...Object.keys(OWN), ...UPSCALERS, "magnificsub_retouch"].sort()), shipped.join(", "));
+            // the recipe select groups by family, the model's maker: an own recipe of another maker's model sits in that
+            // maker's group, not in Magnific's (only Magnific's own models and tools do)
+            const FAMILY = { magnific_auto: "Magnific", ideogram_4_5: "Ideogram", qwen_image_3_0_pro: "Qwen", mystic_2_5: "Magnific", recraft_v4_1: "Recraft" };
+            const families = Object.keys(OWN).map((id) => [id, raw(id).family]);
+            check("each own recipe sits in its model maker's group", families.every(([id, f]) => f === FAMILY[id]), JSON.stringify(families));
             const bad = [];
             const bySlug = (slug) => Object.values(T.GENERATE_MODELS).find((m) => m.slug === slug);
             for (const id of [...Object.keys(SHARED), ...Object.keys(OWN)]) {
@@ -1273,7 +1278,7 @@ async function main() {
                 if (SHARED[id]) {
                     if (r.default === "magnificsub") bad.push(`${id}: the subscription became the default`);
                     if (p.magnific ? order[at - 1] !== "magnific" : at !== order.length - 1) bad.push(`${id}: magnificsub at ${at} of ${order}`);
-                } else if (r.default !== "magnificsub" || !eq(r.providerIds, ["magnificsub"]) || r.name !== OWN[id][1] || r.family !== "Magnific"
+                } else if (r.default !== "magnificsub" || !eq(r.providerIds, ["magnificsub"]) || r.name !== OWN[id][1] || r.family !== FAMILY[id]
                     || !/Magnific plan's credits, after signing in under Settings › API providers/.test(r.description)) bad.push(`${id}: ${r.name}, default ${r.default}, providers ${r.providerIds}`);
             }
             check("each model recipe's variant names its exact catalog model (edit and text), a Resolution row exactly where the catalog lists resolutions, 12 references, the model's shapes for an edit, none for a style-only one; the default kept; the own recipes named after the catalog, magnificsub alone", !bad.length, bad.join(" | "));

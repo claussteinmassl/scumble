@@ -2,7 +2,7 @@
   "id": "qwen_image_3_0_pro",
   "kind": "provider",
   "name": "Qwen Image 3.0 Pro (beta)",
-  "family": "Magnific",
+  "family": "Qwen",
   "description": "Qwen Image 3.0 Pro, which Magnific's catalog marks beta, on your Magnific plan's credits, after signing in under Settings › API providers. Edits the selection with the prompt as an instruction, or makes a new image with up to 12 reference layers. Not run against the live service yet.",
   "default": "magnificsub",
   "providers": {

@@ -2,7 +2,7 @@
   "id": "ideogram_4_5",
   "kind": "provider",
   "name": "Ideogram 4.5 (beta)",
-  "family": "Magnific",
+  "family": "Ideogram",
   "description": "Ideogram 4.5, which Magnific's catalog marks beta, on your Magnific plan's credits, after signing in under Settings › API providers. Edits the selection with the prompt as an instruction, or makes a new image with up to 12 reference layers. Not run against the live service yet.",
   "default": "magnificsub",
   "providers": {

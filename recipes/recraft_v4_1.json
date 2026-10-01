@@ -2,7 +2,7 @@
   "id": "recraft_v4_1",
   "kind": "provider",
   "name": "Recraft V4.1",
-  "family": "Magnific",
+  "family": "Recraft",
   "description": "Recraft V4.1 on your Magnific plan's credits, after signing in under Settings › API providers. Generate new only, with up to 12 reference layers as style pictures. Not run against the live service yet.",
   "default": "magnificsub",
   "providers": {
