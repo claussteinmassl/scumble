@@ -1,8 +1,9 @@
 // The curated, static lists of "Magnific (subscription)" (magnificsub.js): what the recipes' rows offer, by label, and
 // what each label sends. docs/PLAN_MAGNIFIC_SUB.md §3 chose them; the catalogs they come from are copied to
-// tools/refs/magnificsub/catalog_*.txt (read 2026-10-01). Private models are left out; beta models are marked (beta):
-// an entry the catalog marks `private: true` is not generally available and never listed, one marked `beta: true`
-// carries the catalog's name with " (beta)" (tools/magnificsub_test.js holds the tables to the catalogs).
+// tools/refs/magnificsub/catalog_*.txt (read 2026-10-01 with the user's account). Models the account's catalog lists
+// are offered; beta or private ones are marked (beta), and a live run confirms them: `private` means hidden from the
+// general listings, not unusable (simulate_cost priced both private generate models, 2026-10-01). Each label is the
+// catalog's name, plus " (beta)" for such a model (tools/magnificsub_test.js holds the tables to the catalogs).
 //
 // A row's value is the label; pick() also takes the slug (or an alias) itself, for an agent that names it.
 "use strict";
@@ -76,8 +77,8 @@ const RETOUCH_MODELS = Object.freeze({
 });
 
 // catalog_images_models_list.txt: each model's aspect ratios as listed, and how a reference layer goes: as "image"
-// where the model takes one, as "style" (a creation as a style picture) where it takes only that. Of the spec's list,
-// Ideogram 4.5 and Qwen Image 3.0 Pro are private in the catalog and stay out; GPT 2.5 is beta.
+// where the model takes one, as "style" (a creation as a style picture) where it takes only that. The spec's list, in
+// its order; GPT 2.5 is beta, Ideogram 4.5 and Qwen Image 3.0 Pro are beta and private.
 const GENERATE_MODELS = Object.freeze({
     "Auto": { slug: "auto", ref: "image", aspects: ["1:1", "16:9", "9:16", "2:3", "3:4", "1:2", "2:1", "4:5", "3:2", "4:3"] },
     "Flux.2 Pro": { slug: "flux-2", ref: "image", aspects: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "1:2", "2:1", "4:5"] },
@@ -87,8 +88,10 @@ const GENERATE_MODELS = Object.freeze({
     "Google Nano Banana Pro": { slug: "imagen-nano-banana-2", ref: "image", aspects: ["1:1", "21:9", "16:9", "9:16", "4:3", "4:5", "5:4", "3:4", "3:2", "2:3"] },
     "Google Nano Banana 2": { slug: "imagen-nano-banana-2-flash", ref: "image", aspects: ["1:1", "21:9", "8:1", "4:1", "16:9", "9:16", "1:4", "1:8", "4:3", "4:5", "5:4", "3:4", "3:2", "2:3"] },
     "Seedream 5 Pro": { slug: "seedream-5-pro", ref: "image", aspects: ["1:1", "4:3", "3:4", "16:9", "9:16", "3:2", "2:3", "21:9"] },
+    "Ideogram 4.5 (beta)": { slug: "ideogram-4-5", ref: "image", aspects: ["1:1", "4:5", "5:4", "3:4", "4:3", "2:3", "3:2", "9:16", "16:9", "1:2", "2:1", "1:3", "3:1"] },
     "Mystic 2.5": { slug: "mystic-2-5", ref: "style", aspects: ["1:1", "16:9", "9:16", "2:3", "3:4", "1:2", "2:1", "4:5", "3:2", "4:3"] },
     "Recraft V4.1": { slug: "recraft-v4-1", ref: "style", aspects: ["1:1", "2:1", "1:2", "3:2", "2:3", "4:3", "3:4", "5:4", "4:5", "16:9", "9:16"] },
+    "Qwen Image 3.0 Pro (beta)": { slug: "qwen-image-3-0-pro", ref: "image", aspects: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "1:2", "2:1", "4:5"] },
 });
 
 const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);

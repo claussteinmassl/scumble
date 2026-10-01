@@ -746,9 +746,9 @@ async function main() {
             for (const [label, m] of Object.entries(sub._tables.GENERATE_MODELS)) {
                 const e = models.get(m.slug);
                 if (!e) { bad.push(`${label}: ${m.slug} not in the catalog`); continue; }
-                // private models are left out; beta models are marked (beta), with the catalog's own name
-                if (e.private) bad.push(`${label}: ${m.slug} is private`);
-                if (`${e.name}${e.beta ? " (beta)" : ""}` !== label) bad.push(`${label}: the catalog calls ${m.slug} "${e.name}"${e.beta ? " (beta)" : ""}`);
+                // every model the account's catalog lists is offered; a beta or private one is marked (beta)
+                const mark = e.beta || e.private ? " (beta)" : "";
+                if (`${e.name}${mark}` !== label) bad.push(`${label}: the catalog calls ${m.slug} "${e.name}"${mark}`);
                 if (!eq(e.aspects.filter((x) => x !== "auto"), m.aspects)) bad.push(`${label}: aspects ${m.aspects} vs ${e.aspects}`);
                 if (!e.refTypes.includes(m.ref) || (m.ref === "style" && e.refTypes.includes("image"))) bad.push(`${label}: reference type ${m.ref} vs ${e.refTypes}`);
             }
@@ -757,17 +757,16 @@ async function main() {
                 const e = retouch.get(m.slug || "retouch-auto");
                 if (!e) { bad.push(`retouch ${label}: not in the catalog`); continue; }
                 if (e.name !== label) bad.push(`retouch ${label}: the catalog calls it "${e.name}"`);
-                if (e.private) bad.push(`retouch ${label}: private`);
-                if (e.beta) bad.push(`retouch ${label}: beta, and not in the spec's list`);
+                if (`${e.name}${e.beta || e.private ? " (beta)" : ""}` !== label) bad.push(`retouch ${label}: the label misses its (beta) mark`);
                 if (!eq(e.modes, m.modes)) bad.push(`retouch ${label}: modes ${m.modes} vs ${e.modes}`);
                 if (!eq(e.resolutions, m.resolutions || [])) bad.push(`retouch ${label}: resolutions ${m.resolutions} vs ${e.resolutions}`);
             }
-            check("every generate and retouch entry has the catalog's name (\" (beta)\" for a beta model), slug, aspects, modes and resolutions; no private model", !bad.length, bad.join(" | "));
-            // the spec's list without its two private models (Ideogram 4.5, Qwen Image 3.0 Pro), GPT 2.5 marked beta
-            const spec = ["Auto", "Flux.2 Pro", "Flux.2 Max", "GPT 2", "GPT 2.5 (beta)", "Google Nano Banana Pro", "Google Nano Banana 2", "Seedream 5 Pro", "Mystic 2.5", "Recraft V4.1"];
-            const privateOnes = ["ideogram-4-5", "qwen-image-3-0-pro"].map((x) => models.get(x));
-            check("Ideogram 4.5 and Qwen Image 3.0 Pro are private in the catalog (so left out), GPT 2.5 beta only", privateOnes.every((e) => e && e.private) && models.get("gpt-2-mini").beta && !models.get("gpt-2-mini").private);
-            check("the generate list is the spec's less the private models, in its order", eq(Object.keys(sub._tables.GENERATE_MODELS), spec) && eq(Object.keys(sub._tables.RETOUCH_MODELS), ["Auto", "Classic", "Erase", "Google Nano Banana Pro", "Google Nano Banana 2"]));
+            check("every generate and retouch entry has the catalog's name (\" (beta)\" for a beta or private model), slug, aspects, modes and resolutions", !bad.length, bad.join(" | "));
+            // the spec's whole list in its order: GPT 2.5 is beta, Ideogram 4.5 and Qwen Image 3.0 Pro beta and private
+            const spec = ["Auto", "Flux.2 Pro", "Flux.2 Max", "GPT 2", "GPT 2.5 (beta)", "Google Nano Banana Pro", "Google Nano Banana 2", "Seedream 5 Pro", "Ideogram 4.5 (beta)", "Mystic 2.5", "Recraft V4.1", "Qwen Image 3.0 Pro (beta)"];
+            const flags = ["gpt-2-mini", "ideogram-4-5", "qwen-image-3-0-pro"].map((x) => models.get(x));
+            check("the catalog's flags: GPT 2.5 beta only, Ideogram 4.5 and Qwen Image 3.0 Pro beta and private (offered, marked (beta))", flags[0].beta && !flags[0].private && flags.slice(1).every((e) => e && e.beta && e.private));
+            check("the generate list is the spec's, in its order", eq(Object.keys(sub._tables.GENERATE_MODELS), spec) && eq(Object.keys(sub._tables.RETOUCH_MODELS), ["Auto", "Classic", "Erase", "Google Nano Banana Pro", "Google Nano Banana 2"]));
             const schemaAspects = mockLib.toolDefs().find((d) => d.name === "images_generate").inputSchema.properties.aspectRatio.enum;
             check("the aspects images_generate takes are its schema's enum", eq([...sub._tables.GENERATE_ASPECTS].sort(), [...schemaAspects].sort()));
         });
