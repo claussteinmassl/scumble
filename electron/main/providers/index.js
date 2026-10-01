@@ -18,6 +18,9 @@
 //                            numbered from 1 in the order the text route sends them; an adapter without it leaves
 //                            references out of a new image. `request.refsMax` (the variant's `text.refs.max`) lowers
 //                            the route's cap.
+//   ready(ctx)               optional, for a provider without a key (Magnific (subscription) signs in instead): { ok: true }
+//                            or { ok: false, reason }; edit() and balance() ask it instead of the key check, ctx
+//                            { keys, settings }. describeAll() reports such a provider (`auth: "oauth"`) with `signedIn`.
 //   ctx:     { key, fetch, log, base, toJpeg, opaque, bitmap, fromBitmap, cropPng }   base: the adapter's own allowlisted host from
 //            settings (ToAPIs, OpenRouter; ModelArk's and Oxen.ai's loopback mock; never from a recipe), toJpeg(png, quality): an image re-encoded by Electron's
 //            nativeImage, opaque(png): whether it has no transparent pixel; bitmap(png): { width, height, data } (BGRA),
@@ -53,6 +56,7 @@ const PROVIDERS = {
     ark: require("./ark"),
     oxen: require("./oxen"),
     magnific: require("./magnific"),
+    magnificsub: require("./magnificsub"),   // no key row: a sign-in (OAuth) to the user's Magnific plan
     comfyrouter: require("./comfyrouter"),   // no key row: the Comfy Cloud key (keyName)
     comfypartner: require("./comfypartner"), // no key row either: HY Image 3.5 through Comfy's Partner Node proxy
     anthropic: require("./anthropic"),   // key row only: prompt upsampling (llm.js)
@@ -75,7 +79,23 @@ function keyNameOf(id, p) {
  */
 function describeAll() {
     // loopback is the smoke test's own provider, compat has its own settings section (URL, model, key), inapp needs no key
-    return Object.entries(PROVIDERS).filter(([id]) => id !== "loopback" && id !== "compat" && id !== "inapp").map(([id, p]) => ({ id, label: p.label, keyUrl: p.keyUrl, keyHint: p.keyHint || "", key: keys.describe(keyNameOf(id, p)), balance: typeof p.balance === "function", sharesKey: p.keyName || null }));
+    return Object.entries(PROVIDERS).filter(([id]) => id !== "loopback" && id !== "compat" && id !== "inapp").map(([id, p]) => {
+        const row = { id, label: p.label, keyUrl: p.keyUrl, keyHint: p.keyHint || "", key: keys.describe(keyNameOf(id, p)), balance: typeof p.balance === "function", sharesKey: p.keyName || null };
+        // a provider that signs in instead of taking a key: the row shows the sign-in, not a key input
+        if (p.auth === "oauth") Object.assign(row, { auth: "oauth", signedIn: !!(p.ready && p.ready(readyContext()).ok) });
+        return row;
+    });
+}
+
+/** What a provider's ready() reads: keys.js and the settings (the server a test may point it to). */
+function readyContext() {
+    return { keys, settings: settings.get() };
+}
+
+/** Throws the provider's own reason when its ready() says it cannot run (not signed in). */
+function checkReady(p) {
+    const r = p.ready(readyContext());
+    if (!r || !r.ok) throw new Error((r && r.reason) || `${p.label} is not ready.`);
 }
 
 function toBuffer(v) {
@@ -159,8 +179,12 @@ async function edit(request) {
     if (text && typeof p.generate !== "function") throw new Error(`${p.label} has no text-to-image endpoint in Scumble; pick another provider for this model.`);
     if (upscale && typeof p.upscale !== "function") throw new Error(`${p.label} has no upscaler in Scumble; pick another provider for this model.`);
     const verb = text ? "generate" : upscale ? "upscale" : "edit";
-    const key = p.needsKey === false ? "" : keys.get(keyNameOf(id, p));
-    if (p.needsKey !== false && !key) throw new Error(`No API key for ${p.label}. Add it under Settings › API providers.`);
+    let key = "";
+    if (typeof p.ready === "function") checkReady(p);
+    else {
+        key = p.needsKey === false ? "" : keys.get(keyNameOf(id, p));
+        if (p.needsKey !== false && !key) throw new Error(`No API key for ${p.label}. Add it under Settings › API providers.`);
+    }
     const given = (request.references || []).length;
     let req = {
         ...request,
@@ -303,8 +327,12 @@ function contextFor(id, p, key) {
 async function balance(id) {
     const p = PROVIDERS[String(id || "")];
     if (!p || typeof p.balance !== "function") throw new Error(`${(p && p.label) || id} cannot report a balance.`);
-    const key = keys.get(keyNameOf(id, p));
-    if (!key) throw new Error(`No API key for ${p.label}. Add it under Settings › API providers.`);
+    let key = "";
+    if (typeof p.ready === "function") checkReady(p);
+    else {
+        key = keys.get(keyNameOf(id, p));
+        if (!key) throw new Error(`No API key for ${p.label}. Add it under Settings › API providers.`);
+    }
     try {
         return await p.balance(contextFor(id, p, key));
     } catch (err) {

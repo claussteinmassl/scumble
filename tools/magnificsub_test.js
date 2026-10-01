@@ -8,8 +8,10 @@
 "use strict";
 
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const crypto = require("node:crypto");
+const Module = require("node:module");
 
 const ROOT = path.join(__dirname, "..");
 const auth = require(path.join(ROOT, "electron", "main", "providers", "magnificsub_auth.js"));
@@ -84,6 +86,37 @@ function pngBytes(size, tag) {
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(b);
     b.write(tag, 33, "latin1");
     return b;
+}
+
+// ---- the fake codec of tools/magnific_test.js: a "PNG" is the signature and an IHDR followed by raw 4-byte pixels -----
+
+function header(w, h, len) {
+    const b = Buffer.alloc(len, 0);
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]).copy(b);
+    b.writeUInt32BE(w, 16);
+    b.writeUInt32BE(h, 20);
+    b[24] = 8;
+    b[25] = 6;
+    return b;
+}
+const sizeOf = (b) => (b && b.length >= 24 && b[0] === 0x89 ? [b.readUInt32BE(16), b.readUInt32BE(20)] : null);
+const codec = {
+    bitmap(png) {
+        const b = Buffer.from(png), s = sizeOf(b);
+        if (!s || b.length !== 33 + s[0] * s[1] * 4) return null;
+        return { width: s[0], height: s[1], data: b.subarray(33) };
+    },
+    fromBitmap(bm) {
+        const b = header(bm.width, bm.height, 33 + bm.width * bm.height * 4);
+        Buffer.from(bm.data.buffer ? Buffer.from(bm.data.buffer, bm.data.byteOffset, bm.data.byteLength) : bm.data).copy(b, 33);
+        return b;
+    },
+};
+/** A grey picture of the fake codec: fn(x, y) -> 0..255, opaque. */
+function greyOf(w, h, fn) {
+    const d = Buffer.alloc(w * h * 4);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const v = fn(x, y), j = (y * w + x) * 4; d[j] = v; d[j + 1] = v; d[j + 2] = v; d[j + 3] = 255; }
+    return { width: w, height: h, data: d };
 }
 
 async function main() {
@@ -506,12 +539,308 @@ async function main() {
             check("an error with the right state ends the sign-in with the realm's words, and stores nothing", e === "Magnific refused the sign-in: The user said no" && !("magnificsub" in k2.data), e);
         });
 
-        await section("17. the whole run", async () => {
+        // ---- the verbs (Task 2) ----------------------------------------------------------------------------------
+        const vk = fakeKeys();
+        await auth.signIn({ keys: vk, settings, openExternal: browser(), fetch: rec });
+        remember(vk);
+        const vctx = { keys: vk, settings, fetch: rec, sleep: fakeSleep, bitmap: codec.bitmap, fromBitmap: codec.fromBitmap };
+        const toolsOf = (from) => toolCalls(from).map((x) => x.tool);
+        const invalid = (from) => toolCalls(from).filter((x) => x.error).map((x) => `${x.tool}: ${x.error}`);
+
+        await section("18. upscale", async () => {
+            let c0 = mock.calls.length;
+            const out = await sub.upscale({ kind: "upscale", model: "images_upscale", image: pngBytes(300, "UPSCALE-SRC"), factor: 2, prompt: "crisp bark", params: {} }, vctx);
+            const c = toolCalls(c0);
+            const up = c.find((x) => x.tool === "images_upscale");
+            check("one upload, images_upscale, the wait and the original's download, every call valid", eq(toolsOf(c0), ["creations_request_upload", "creations_finalize_upload", "images_upscale", "creations_wait", "creations_register_download"]) && !invalid(c0).length, short(toolsOf(c0)) + " " + invalid(c0).join(" | "));
+            check("no rows set (Creative, no preset): mode, scale \"2x\", Optimized for, Engine and the prompt; empty sliders stay out (the server's defaults)",
+                up && mock.creations.get(up.args.creationIdentifier).fileName === "scumble.png" && eq(up.args, { creationIdentifier: up.args.creationIdentifier, mode: "creative", scale: "2x", optimised: "StandardUltra", engine: "automatic", prompt: "crisp bark" }), short(up && up.args));
+            check("the answer: the original's bytes, PNG, its size, the credits and the mode", out.mime === "image/png" && out.width === 64 && out.height === 48 && eq(out.info, { credits: 90, model: "creative", factor: "2x" })
+                && out.bytes.toString("latin1", 33, 39) === "RESULT", short({ ...out, bytes: out.bytes.length }));
+
+            // a factor the mode does not take: refused before the upload, naming the factors it takes
+            const before = { calls: mock.calls.length, http: mock.http.length };
+            const e = await throws(() => sub.upscale({ kind: "upscale", image: pngBytes(300, "X"), factor: 4, params: { mode: "Precision photo" } }, vctx));
+            check("Precision photo at 4x is refused before anything is sent, naming its factors", e === "Magnific (subscription): Precision photo upscales by 2x only, not 4x." && mock.calls.length === before.calls && mock.http.length === before.http, e);
+            const refusals = ["Precision photo denoiser", "Precision v1"].map((mode) => [4, 8, 16].every((f) => { try { sub._upscaleArgs({ factor: f, params: { mode } }); return false; } catch (_) { return true; } }));
+            const allow = ["Creative", "Precision sublime"].every((mode) => [2, 4, 8, 16].every((f) => sub._upscaleArgs({ factor: f, params: { mode } }).scale === `${f}x`));
+            check("ultra-denoiser and ultra refuse 4, 8 and 16 too; creative and ultra-sublime take 2, 4, 8 and 16", refusals.every(Boolean) && allow);
+
+            // every mode sends only the keys its catalog entry lists (catalog_images_upscale_modes_list.txt)
+            const cat = fs.readFileSync(path.join(__dirname, "refs", "magnificsub", "catalog_images_upscale_modes_list.txt"), "utf8");
+            const optional = {};
+            for (const m of cat.matchAll(/- id: ([\w-]+)[\s\S]*?optional\[\d+\]: ([\w,]+)/g)) optional[m[1]] = m[2].split(",");
+            const bad = [];
+            for (const [label, mode] of Object.entries(sub._tables.UPSCALE_MODES)) {
+                if (!optional[mode.slug]) { bad.push(`${label}: ${mode.slug} not in the catalog`); continue; }
+                for (const preset of Object.keys(sub._tables.UPSCALE_PRESETS)) {
+                    let a;
+                    try { a = sub._upscaleArgs({ factor: 2, prompt: "p", params: { mode: label, preset, creativity: 1, resemblance: 1, sharpness: 5, grain: 5 } }); } catch (_) { continue; }
+                    for (const k of Object.keys(a)) if (k !== "mode" && !optional[mode.slug].includes(k)) bad.push(`${label}/${preset}: ${k}`);
+                    const v = mockLib.validate(mockLib.toolDefs().find((d) => d.name === "images_upscale").inputSchema, { creationIdentifier: "x", ...a });
+                    if (v.length) bad.push(`${label}/${preset}: ${v.join("; ")}`);
+                }
+            }
+            check("every mode and preset sends only the keys the mode's catalog entry lists, valid against the schema", !bad.length, bad.join(" | "));
+            const sublime = sub._upscaleArgs({ factor: 8, prompt: "ignored", params: { mode: "Precision sublime", preset: "Portraits", sharpness: 50 } });
+            const photo = sub._upscaleArgs({ factor: 2, params: { mode: "ultra-photo", sharpness: 12, grain: 9 } });
+            const vivid = sub._upscaleArgs({ factor: 16, params: { mode: "Creative", preset: "Vivid", creativity: 9, optimised: "3D renders", engine: "Sparkle" } });
+            check("a preset goes alone (no sliders), the sliders only without one; a precision mode sends no prompt",
+                eq(sublime, { mode: "ultra-sublime", scale: "8x", precisionPreset: "portraits" }) && eq(photo, { mode: "ultra-photo", scale: "2x", sharpness: 12, grain: 9 })
+                && eq(vivid, { mode: "creative", scale: "16x", presets: "vivid", optimised: "ThreeDRenders", engine: "magnific_sparkle" }), short([sublime, photo, vivid]));
+            const e2 = await throws(() => sub.upscale({ image: pngBytes(100, "X"), factor: 2, params: { mode: "Precision photo", preset: "Vivid" } }, vctx));
+            const e3 = await throws(() => sub.upscale({ image: pngBytes(100, "X"), factor: 2, params: { mode: "Creative", creativity: 11 } }, vctx));
+            const e4 = await throws(() => sub.upscale({ image: pngBytes(100, "X"), factor: 2, params: { mode: "Turbo" } }, vctx));
+            check("a preset of the other kind, a slider out of range and an unknown mode are refused before the upload",
+                /the preset Vivid is for the Creative modes; Precision photo takes None \(sliders\), Balanced, Portraits and Grainy analog/.test(e2 || "") && /creativity goes from -10 to 10, not 11/.test(e3 || "") && /no upscale mode "Turbo"/.test(e4 || "") && mock.calls.length === before.calls, [e2, e3, e4].join(" | "));
+        });
+
+        await section("19. retouch (edit, kind fill)", async () => {
+            const W = 3000, H = 1000;
+            const image = codec.fromBitmap(greyOf(W, H, (x, y) => (x + y) & 255));
+            const mask = codec.fromBitmap(greyOf(W, H, (x, y) => (x >= 1500 && x < 2400 && y >= 300 && y < 700 ? 200 : 40)));
+            let c0 = mock.calls.length;
+            const out = await sub.edit({ kind: "fill", model: "images_retouch", prompt: "a red door", image, mask, references: [], params: {} }, vctx);
+            const c = toolCalls(c0);
+            const rt = c.find((x) => x.tool === "images_retouch");
+            check("two uploads, then images_retouch {creationIdentifier, maskCreationIdentifier, mode, prompt}, every call valid",
+                eq(toolsOf(c0), ["creations_request_upload", "creations_finalize_upload", "creations_request_upload", "creations_finalize_upload", "images_retouch", "creations_wait", "creations_register_download"])
+                && !invalid(c0).length && rt && eq(Object.keys(rt.args), ["creationIdentifier", "maskCreationIdentifier", "mode", "prompt"]) && rt.args.mode === "replace" && rt.args.prompt === "a red door", short(rt && rt.args));
+            const sent = codec.bitmap(mock.creations.get(rt.args.creationIdentifier).bytes);
+            const sentMask = codec.bitmap(mock.creations.get(rt.args.maskCreationIdentifier).bytes);
+            check("a 3000 x 1000 crop goes as 2048 x 680 (long edge 2048, multiples of 8), the mask at the same size", sent && sentMask && sent.width === 2048 && sent.height === 680 && sentMask.width === 2048 && sentMask.height === 680,
+                sent && `${sent.width}x${sent.height}, mask ${sentMask && sentMask.width}x${sentMask && sentMask.height}`);
+            let binary = true, outside = 0;
+            for (let y = 0; y < 680; y++) for (let x = 0; x < 2048; x++) {
+                const v = sentMask.data[(y * 2048 + x) * 4];
+                if (v !== 0 && v !== 255) binary = false;
+                const sx = (x + 0.5) * W / 2048, sy = (y + 0.5) * H / 680;
+                const want = sx >= 1500 && sx < 2400 && sy >= 300 && sy < 700 ? 255 : 0;
+                if (v !== want) outside++;
+            }
+            check("the mask stays black and white (thresholded at 128) and keeps the selection's place", binary && outside === 0, `${outside} pixels off, binary ${binary}`);
+            const corner = sent.data.slice(0, 4);
+            check("the picture is the area average (opaque stays opaque)", corner[3] === 255 && Math.abs(corner[0] - 1) <= 1, short([...corner]));
+            check("the answer comes back at its own size, with the credits", out.width === 64 && out.height === 48 && out.info.credits === 90 && out.info.model === "auto" && eq(out.info.sent, [2048, 680]), short(out.info));
+
+            // a picture already at its size goes as it is
+            const small = codec.fromBitmap(greyOf(800, 600, (x) => x & 255));
+            c0 = mock.calls.length;
+            await sub.edit({ kind: "fill", prompt: "sky", image: small, mask: codec.fromBitmap(greyOf(800, 600, () => 255)), params: { mode: "Replace", model: "Google Nano Banana Pro", resolution: "4k" } }, vctx);
+            const rt2 = toolCalls(c0).find((x) => x.tool === "images_retouch");
+            check("800 x 600 is sent unchanged; Nano Banana Pro at 4k sends its slug and the resolution", Buffer.compare(mock.creations.get(rt2.args.creationIdentifier).bytes, small) === 0
+                && rt2.args.model === "retouch-imagen-nano-banana-2" && rt2.args.resolution === "4k" && !invalid(c0).length, short(rt2.args));
+            const sz = [[3000, 1000], [1001, 999], [2048, 2048], [100, 5000], [5, 5]].map(([w, h]) => sub._retouchSize(w, h));
+            check("the size rule: 2048x680, 1000x992, 2048x2048, 40x2048, 8x8", eq(sz, [[2048, 680], [1000, 992], [2048, 2048], [40, 2048], [8, 8]]), short(sz));
+
+            // erase: no prompt; the model Erase by its slug
+            c0 = mock.calls.length;
+            await sub.edit({ kind: "fill", prompt: "ignored for erase", image: small, mask: small, params: { mode: "Erase", model: "Erase" } }, vctx);
+            const rt3 = toolCalls(c0).find((x) => x.tool === "images_retouch");
+            check("Erase sends no prompt; the model Erase goes as retouch-erase", rt3 && !("prompt" in rt3.args) && rt3.args.mode === "erase" && rt3.args.model === "retouch-erase" && !invalid(c0).length, short(rt3 && rt3.args));
+
+            // refusals before any upload
+            const before = { calls: mock.calls.length, http: mock.http.length };
+            const r = (prompt, params, kind = "fill") => throws(() => sub.edit({ kind, prompt, image: small, mask: small, params }, vctx));
+            const errs = [
+                await r("   ", {}),
+                await r("x", { mode: "Erase", model: "Classic" }),
+                await r("x", { model: "Google Nano Banana Pro", resolution: "1k" }),
+                await r("x", { model: "Auto", resolution: "2k" }),
+                await r("x", {}, "edit"),
+            ];
+            check("refused before any upload: Replace without a prompt, Classic erasing, Nano Banana Pro at 1k, a resolution on Auto, an edit without a mask",
+                /Replace needs a prompt/.test(errs[0] || "") && /the model Classic does not erase; it takes the mode Replace/.test(errs[1] || "") && /takes the resolution 2k and 4k, not 1k/.test(errs[2] || "")
+                && /the model Auto takes no resolution/.test(errs[3] || "") && /needs the selection as a mask/.test(errs[4] || "") && mock.calls.length === before.calls && mock.http.length === before.http, errs.join(" | "));
+            const lay = sub.layout({ kind: "fill", references: [Buffer.from([1])], original: 0 });
+            check("the layout: the crop and the mask; reference layers are dropped (a note says so)", lay.pictures.length === 2 && lay.pictures[0].role === "crop" && lay.pictures[1].role === "mask" && lay.pictures[1].n === null && /alone/.test(lay.drops || ""), short(lay));
+        });
+
+        await section("20. generate (kind text)", async () => {
+            let c0 = mock.calls.length;
+            const out = await sub.generate({ kind: "text", model: "images_generate", prompt: "a lighthouse at dusk", width: 1920, height: 1080, references: [], params: { model: "Seedream 5 Pro" }, seed: 7 }, vctx);
+            const g = toolCalls(c0).find((x) => x.tool === "images_generate");
+            check("without references: no upload, images_generate {prompt, mode, aspectRatio, count: 1, seed}, valid",
+                eq(toolsOf(c0), ["images_generate", "creations_wait", "creations_register_download"]) && !invalid(c0).length && eq(g.args, { prompt: "a lighthouse at dusk", mode: "seedream-5-pro", aspectRatio: "16:9", count: 1, seed: 7 }), short(g && g.args));
+            check("the answer: the first result, its size, the credits, the model and the aspect", out.width === 64 && out.height === 48 && eq(out.info, { credits: 90, model: "seedream-5-pro", aspect: "16:9" }) && out.seed === 7, short(out.info));
+
+            c0 = mock.calls.length;
+            const refs = [pngBytes(200, "REF-A"), pngBytes(200, "REF-B"), pngBytes(200, "REF-C")];
+            await sub.generate({ kind: "text", prompt: "the cat of image 1 on the sofa of image 3", width: 1024, height: 1024, references: refs, params: { model: "Flux.2 Pro" } }, vctx);
+            const g2 = toolCalls(c0).find((x) => x.tool === "images_generate");
+            const ups = toolCalls(c0).filter((x) => x.tool === "creations_finalize_upload").map((x) => x.args.fileName);
+            const ids = (g2 && g2.args.references || []).map((x) => x.identifier);
+            check("three reference layers: three uploads, then references [{type: \"image\", identifier}] in their order (the schema's shape)",
+                eq(ups, ["scumble-ref-1.png", "scumble-ref-2.png", "scumble-ref-3.png"]) && g2 && eq(g2.args.references.map((x) => Object.keys(x)), [["type", "identifier"], ["type", "identifier"], ["type", "identifier"]])
+                && g2.args.references.every((x) => x.type === "image") && ids.every((id, i) => mock.creations.get(id).bytes.toString("latin1", 33, 38) === ["REF-A", "REF-B", "REF-C"][i]) && !invalid(c0).length, short(g2 && g2.args));
+            check("... the prompt says what the references are; the model's slug and its aspect", g2.args.prompt === "the cat of image 1 on the sofa of image 3 Images 1 to 3 are reference images." && g2.args.mode === "flux-2" && g2.args.aspectRatio === "1:1", g2.args.prompt);
+
+            c0 = mock.calls.length;
+            await sub.generate({ kind: "text", prompt: "a castle", width: 800, height: 1200, references: [pngBytes(200, "STYLE")], params: { model: "Mystic 2.5" } }, vctx);
+            const g3 = toolCalls(c0).find((x) => x.tool === "images_generate");
+            check("Mystic 2.5 takes a creation as a style picture: type \"style\", no reference sentence", g3 && eq(g3.args.references.map((x) => x.type), ["style"]) && g3.args.prompt === "a castle" && g3.args.aspectRatio === "2:3" && !invalid(c0).length, short(g3 && g3.args));
+            const lay = sub.textLayout({ kind: "text", references: [1, 2].map(() => Buffer.from([1])), original: 0, params: { model: "Recraft V4.1" } });
+            const lay2 = sub.textLayout({ kind: "text", references: [1, 2].map(() => Buffer.from([1])), original: 0, params: {} });
+            check("the text layouts: style references unnumbered for Recraft V4.1, numbered 1, 2 for Auto, both capped at 12", lay.style && lay.pictures.every((x) => x.n === null) && lay.max === 12 && eq(lay2.pictures.map((x) => x.n), [1, 2]) && lay2.max === 12, short([lay, lay2]));
+
+            const a = (label, w, h) => sub._aspectFor(sub._tables.GENERATE_MODELS[label], w, h);
+            check("the aspect: the model's closest that images_generate takes (GPT 2 at 3:1 gets 21:9, Nano Banana 2 at 4:1 gets 21:9, Flux.2 Max at 21:9 gets 2:1)",
+                a("GPT 2", 3000, 1000) === "21:9" && a("Google Nano Banana 2", 4000, 1000) === "21:9" && a("Flux.2 Max", 2100, 900) === "2:1" && a("Auto", 1000, 1250) === "4:5", [a("GPT 2", 3000, 1000), a("Google Nano Banana 2", 4000, 1000), a("Flux.2 Max", 2100, 900), a("Auto", 1000, 1250)].join(", "));
+
+            const before = { calls: mock.calls.length, http: mock.http.length };
+            const e1 = await throws(() => sub.generate({ kind: "text", prompt: "x", references: Array.from({ length: 13 }, () => pngBytes(100, "R")), params: {} }, vctx));
+            const e2 = await throws(() => sub.generate({ kind: "text", prompt: " ", references: [], params: {} }, vctx));
+            const e3 = await throws(() => sub.generate({ kind: "text", prompt: "x", references: [], params: { model: "Cinematic" } }, vctx));
+            check("refused before anything is sent: 13 references, no prompt, a model not on the list", /at most 12 reference images/.test(e1 || "") && /needs a prompt/.test(e2 || "") && /no model "Cinematic"/.test(e3 || "") && mock.calls.length === before.calls && mock.http.length === before.http, [e1, e2, e3].join(" | "));
+        });
+
+        await section("21. the curated lists against the catalogs", async () => {
+            const read = (n) => fs.readFileSync(path.join(__dirname, "refs", "magnificsub", n), "utf8");
+            const entries = (text) => text.split(/\n  - slug: /).slice(1).map((b) => {
+                const slug = b.split("\n")[0].trim();
+                const field = (k) => { const m = new RegExp(`\\n    ${k}(?:\\[\\d+\\])?: (.*)`).exec(b); return m ? m[1].trim() : null; };
+                const list = (k) => (field(k) || "").split(",").map((x) => x.replace(/"/g, "")).filter(Boolean);
+                return { slug, name: field("name"), beta: field("beta") === "true", private: field("private") === "true", aspects: list("aspectRatios"), modes: list("retouchModes"), resolutions: list("resolutions"), refTypes: list("referenceTypes") };
+            });
+            const models = new Map(entries(read("catalog_images_models_list.txt")).map((e) => [e.slug, e]));
+            const bad = [];
+            for (const [label, m] of Object.entries(sub._tables.GENERATE_MODELS)) {
+                const e = models.get(m.slug);
+                if (!e) { bad.push(`${label}: ${m.slug} not in the catalog`); continue; }
+                if (e.name !== label) bad.push(`${label}: the catalog calls ${m.slug} "${e.name}"`);
+                if (!eq(e.aspects.filter((x) => x !== "auto"), m.aspects)) bad.push(`${label}: aspects ${m.aspects} vs ${e.aspects}`);
+                if (!e.refTypes.includes(m.ref) || (m.ref === "style" && e.refTypes.includes("image"))) bad.push(`${label}: reference type ${m.ref} vs ${e.refTypes}`);
+            }
+            const retouch = new Map(entries(read("catalog_retouch_models_list.txt")).map((e) => [e.slug, e]));
+            for (const [label, m] of Object.entries(sub._tables.RETOUCH_MODELS)) {
+                const e = retouch.get(m.slug || "retouch-auto");
+                if (!e) { bad.push(`retouch ${label}: not in the catalog`); continue; }
+                if (e.name !== label) bad.push(`retouch ${label}: the catalog calls it "${e.name}"`);
+                if (e.beta || e.private) bad.push(`retouch ${label}: beta or private`);
+                if (!eq(e.modes, m.modes)) bad.push(`retouch ${label}: modes ${m.modes} vs ${e.modes}`);
+                if (!eq(e.resolutions, m.resolutions || [])) bad.push(`retouch ${label}: resolutions ${m.resolutions} vs ${e.resolutions}`);
+            }
+            check("every generate and retouch entry has the catalog's name, slug, aspects, modes and resolutions (retouch: no beta or private model)", !bad.length, bad.join(" | "));
+            const spec = ["Auto", "Flux.2 Pro", "Flux.2 Max", "GPT 2", "GPT 2.5", "Google Nano Banana Pro", "Google Nano Banana 2", "Seedream 5 Pro", "Ideogram 4.5", "Mystic 2.5", "Recraft V4.1", "Qwen Image 3.0 Pro"];
+            check("the generate list is the spec's, in its order", eq(Object.keys(sub._tables.GENERATE_MODELS), spec) && eq(Object.keys(sub._tables.RETOUCH_MODELS), ["Auto", "Classic", "Erase", "Google Nano Banana Pro", "Google Nano Banana 2"]));
+            const schemaAspects = mockLib.toolDefs().find((d) => d.name === "images_generate").inputSchema.properties.aspectRatio.enum;
+            check("the aspects images_generate takes are its schema's enum", eq([...sub._tables.GENERATE_ASPECTS].sort(), [...schemaAspects].sort()));
+        });
+
+        await section("22. cutout, balance, ready", async () => {
+            // the result: 4 x 2, alpha 0, 64, 128, 255 per column
+            mock.script.result = codec.fromBitmap({ width: 4, height: 2, data: Buffer.from([...Array(8).keys()].flatMap((i) => [10, 20, 30, [0, 64, 128, 255][i % 4]])) });
+            const c0 = mock.calls.length;
+            let out;
+            try { out = await sub.cutout(pngBytes(300, "CUT"), vctx); } finally { mock.script.result = null; }
+            const call = toolCalls(c0).find((x) => x.tool === "images_remove_background");
+            const m = codec.bitmap(out.bytes);
+            check("images_remove_background {creationIdentifier}, valid", call && eq(Object.keys(call.args), ["creationIdentifier"]) && !invalid(c0).length, short(call && call.args));
+            check("the cut-out's alpha as a grey mask (white = keep) at the result's size, with the credits", m && m.width === 4 && m.height === 2 && out.width === 4 && out.height === 2
+                && eq([...m.data.subarray(0, 16)], [0, 0, 0, 255, 64, 64, 64, 255, 128, 128, 128, 255, 255, 255, 255, 255]) && eq(out.info, { credits: 90, model: "remove-background" }), short(m && [...m.data]));
+            const e = await throws(() => sub.cutout(pngBytes(100, "X"), { ...vctx, bitmap: undefined }));
+            check("no codec: refused in words before the upload", /cannot read the cut-out/.test(e || ""), e);
+
+            check("balance: \"<available> credits (<plan>)\" from account_balance", await sub.balance(vctx) === "1000 credits (Mock Plan)");
+            check("ready: signed in -> ok; signed out -> the sign-in sentence", eq(sub.ready({ keys: vk, settings }), { ok: true }) && eq(sub.ready({ keys: fakeKeys(), settings }), { ok: false, reason: "Sign in to Magnific (subscription) first: Settings › API providers." }));
+            const e2 = await throws(() => sub.balance({ keys: fakeKeys(), settings, fetch: rec }));
+            check("a verb while signed out says to sign in, nothing sent", e2 === auth.NOT_SIGNED_IN, e2);
+        });
+
+        await section("23. providers/index.js: the ready() hook", async () => {
+            const idxPath = path.join(ROOT, "electron", "main", "providers", "index.js");
+            const store = fakeKeys();
+            const orig = Module._load;
+            Module._load = function (request, parent, ...rest) {
+                if (request === "electron") return { nativeImage: {} };
+                if (parent && parent.filename === idxPath) {
+                    if (request === "../log") return { record: () => {} };
+                    if (request === "../keys") return { get: store.get, set: store.set, clear: store.clear, describe: (id) => ({ name: id, set: !!store.get(id) }) };
+                    if (request === "../settings") return { get: () => settings };
+                }
+                return orig.call(this, request, parent, ...rest);
+            };
+            let index;
+            try { index = require(idxPath); } finally { Module._load = orig; }
+            const P = index.PROVIDERS.magnificsub;
+            const keepEdit = P.edit, keepGen = P.generate, keepUp = P.upscale, keepBal = P.balance;
+            const seen = [];
+            P.edit = async (req, c) => { seen.push(["edit", req, c]); return { bytes: pngBytes(80, "OUT"), mime: "image/png", info: { credits: 90 } }; };
+            P.generate = async (req, c) => { seen.push(["generate", req, c]); return { bytes: pngBytes(80, "OUT"), mime: "image/png", info: {} }; };
+            P.upscale = async (req, c) => { seen.push(["upscale", req, c]); return { bytes: pngBytes(80, "OUT"), mime: "image/png", info: {} }; };
+            P.balance = async () => "1 credits";
+            try {
+                const rows = index.describeAll();
+                const row = rows.find((x) => x.id === "magnificsub");
+                check("describeAll: the magnificsub row has auth \"oauth\" and signedIn false; no other row has either",
+                    row && row.auth === "oauth" && row.signedIn === false && row.label === "Magnific (subscription)" && row.balance === true && rows.filter((x) => x.id !== "magnificsub").every((x) => !("auth" in x) && !("signedIn" in x)), short(row));
+                check("... the other rows keep their seven fields", rows.filter((x) => x.id !== "magnificsub").every((x) => eq(Object.keys(x), ["id", "label", "keyUrl", "keyHint", "key", "balance", "sharesKey"])));
+                check("magnificsub is a text and an upscale provider", index.textProviders().includes("magnificsub") && index.upscaleProviders().includes("magnificsub"));
+                const pic = new Uint8Array(pngBytes(80, "CROP"));
+                const e1 = await throws(() => index.edit({ provider: "magnificsub", kind: "fill", model: "images_retouch", prompt: "x", image: pic, mask: pic, references: [], params: {} }));
+                const e2 = await throws(() => index.balance("magnificsub"));
+                check("signed out: edit() and balance() refuse with the sign-in sentence, the adapter is never called", e1 === "Sign in to Magnific (subscription) first: Settings › API providers." && e2 === e1 && !seen.length, `${e1} | ${e2}`);
+
+                await auth.signIn({ keys: store, settings, openExternal: browser(), fetch: rec });
+                remember(store);
+                check("signed in: describeAll says so", index.describeAll().find((x) => x.id === "magnificsub").signedIn === true);
+                const r1 = await index.edit({ provider: "magnificsub", kind: "fill", model: "images_retouch", prompt: "x", image: pic, mask: pic, references: [new Uint8Array(pngBytes(80, "REF"))], params: {} });
+                check("... a fill reaches the adapter's edit with the key empty; the reference layer is dropped with a note", seen.length === 1 && seen[0][0] === "edit" && seen[0][2].key === "" && seen[0][1].references.length === 0
+                    && r1.notes.length === 1 && /Retouch takes the picture and the mask alone/.test(r1.notes[0]), short(r1.notes));
+                const r2 = await index.edit({ provider: "magnificsub", kind: "text", model: "images_generate", prompt: "a cat like {@ref:1}", width: 1024, height: 1024, references: [new Uint8Array(pngBytes(80, "A")), new Uint8Array(pngBytes(80, "B"))], params: { model: "Flux.2 Pro" } });
+                check("... a text run with references reaches generate; the marker becomes \"image 2\"", seen[1] && seen[1][0] === "generate" && seen[1][1].references.length === 2 && seen[1][1].prompt === "a cat like image 2" && eq(r2.refs, [{ ref: 1, name: "image 2" }]), short(seen[1] && seen[1][1].prompt));
+                const e3 = await throws(() => index.edit({ provider: "magnificsub", kind: "text", model: "images_generate", prompt: "a cat like {@ref:0}", references: [new Uint8Array(pngBytes(80, "A"))], params: { model: "Mystic 2.5" } }));
+                check("... a prompt that names a style reference (Mystic 2.5) is refused before the adapter", !!e3 && seen.length === 2, e3);
+                await index.edit({ provider: "magnificsub", kind: "upscale", model: "images_upscale", factor: 4, image: pic, references: [], params: {} });
+                check("... an upscale reaches upscale with its factor", seen[2] && seen[2][0] === "upscale" && seen[2][1].factor === 4);
+                check("... and balance() reaches the adapter", await index.balance("magnificsub") === "1 credits");
+                const pv = index.layout({ provider: "magnificsub", kind: "text", count: 3, params: { model: "Auto" } });
+                const pvStyle = index.layout({ provider: "magnificsub", kind: "text", count: 2, params: { model: "Recraft V4.1" } });
+                check("the preview layout: Auto names image 1-3, Recraft V4.1 none (style references)", eq(pv.names, ["image 1", "image 2", "image 3"]) && eq(pvStyle.names, [null, null]), short([pv.names, pvStyle.names]));
+                const e4 = await throws(() => index.edit({ provider: "magnific", kind: "fill", model: "ideogram-image-edit", prompt: "x", image: pic, mask: pic, references: [], params: {} }));
+                check("a key provider keeps the key check (Magnific without a key)", e4 === "No API key for Magnific. Add it under Settings › API providers.", e4);
+            } finally {
+                P.edit = keepEdit; P.generate = keepGen; P.upscale = keepUp; P.balance = keepBal;
+            }
+        });
+
+        await section("24. the three recipes", async () => {
+            const origLoad = Module._load;
+            Module._load = function (request, ...rest) {
+                if (request === "electron") return { app: { getPath: () => os.tmpdir() } };
+                return origLoad.call(this, request, ...rest);
+            };
+            let recipes;
+            try { recipes = require(path.join(ROOT, "electron", "main", "recipes.js")); } finally { Module._load = origLoad; }
+            const raw = (id) => JSON.parse(fs.readFileSync(path.join(ROOT, "recipes", id + ".json"), "utf8"));
+            const norm = (id) => recipes._normalize(raw(id));
+            const up = norm("magnificsub_upscale"), rt = norm("magnificsub_retouch"), gen = norm("magnificsub_generate");
+            const vu = up.providers.magnificsub, vr = rt.providers.magnificsub, vg = gen.providers.magnificsub;
+            check("all three have magnificsub as their only provider and default", [up, rt, gen].every((r) => r.default === "magnificsub" && eq(r.providerIds, ["magnificsub"])));
+            check("the descriptions and notes say they run on the plan's credits after signing in", [up, rt, gen].every((r) => /Magnific plan's credits, after signing in under Settings › API providers/.test(r.description) && /signing in under Settings › API providers; each run spends the plan's credits/.test(r.providers.magnificsub.note)));
+            check("upscale: task upscale, factor 2/4/8/16, the prompt goes along", up.task === "upscale" && eq(vu.factor.steps, [2, 4, 8, 16]) && vu.factor.default === 2 && vu.usesPrompt === true && vu.text === null);
+            check("retouch: input fill, no text shape, the crop at most 2048 in steps of 8", vr.input === "fill" && vr.text === null && vr.edit === true && vr.limits.max === 2048 && vr.limits.step === 8);
+            check("generate: Generate new only, images_generate with up to 12 references", vg.edit === false && vg.text && vg.text.model === "images_generate" && vg.text.refs && vg.text.refs.max === 12);
+            // every row's choices are what the adapter's tables take, and the defaults run
+            const rows = (v) => Object.fromEntries(v.settings.map((s) => [s.key, s]));
+            const ru = rows(vu), rr = rows(vr), rg = rows(vg);
+            const T = sub._tables;
+            check("the rows' choices are the adapter's labels",
+                eq(ru.mode.spec[0], Object.keys(T.UPSCALE_MODES)) && eq(ru.preset.spec[0], Object.keys(T.UPSCALE_PRESETS)) && eq(ru.optimised.spec[0], Object.keys(T.UPSCALE_OPTIMISED)) && eq(ru.engine.spec[0], Object.keys(T.UPSCALE_ENGINES))
+                && eq(rr.mode.spec[0], Object.keys(T.RETOUCH_MODES)) && eq(rr.model.spec[0], Object.keys(T.RETOUCH_MODELS)) && eq(rg.model.spec[0], Object.keys(T.GENERATE_MODELS)));
+            const defaults = (v) => Object.fromEntries(v.settings.map((s) => [s.key, s.spec[1].default]));
+            const du = sub._upscaleArgs({ factor: 2, params: defaults(vu) }), dr = sub._retouchArgs({ prompt: "x", params: defaults(vr) });
+            check("the defaults make a valid request (Creative 2x with the subtle sliders; Replace on Auto)", eq(du, { mode: "creative", scale: "2x", creativity: -3, resemblance: 3, optimised: "StandardUltra", engine: "automatic" }) && eq(dr, { mode: "replace", prompt: "x" }), short([du, dr]));
+            check("the INT rows' ranges are the catalog's", ru.creativity.spec[1].min === -10 && ru.creativity.spec[1].max === 10 && ru.sharpness.spec[1].min === 0 && ru.sharpness.spec[1].max === 100 && ru.grain.spec[1].default === 4);
+        });
+
+        await section("25. the whole run", async () => {
             const leaked = ERRORS.filter((m) => [...SEEN_TOKENS].some((t) => m.includes(t)));
             check("no token appears in any error of the run", SEEN_TOKENS.size >= 6 && ERRORS.length >= 15 && leaked.length === 0, `${ERRORS.length} errors, ${SEEN_TOKENS.size} tokens`);
             check("the mock never saw a non-test Bearer token", mock.oauth.foreignTokens.length === 0);
             const banned = ["X-Pik" + "aso-Client", "magnific-editor" + "-plugins"];
-            const files = ["electron/main/providers/magnificsub.js", "electron/main/providers/magnificsub_auth.js", "tools/magnificsub_mock.js", "tools/magnificsub_test.js"];
+            const files = ["electron/main/providers/magnificsub.js", "electron/main/providers/magnificsub_auth.js", "tools/magnificsub_mock.js", "tools/magnificsub_test.js",
+                "recipes/magnificsub_upscale.json", "recipes/magnificsub_retouch.json", "recipes/magnificsub_generate.json"];
             const hits = files.filter((f) => { const s = fs.readFileSync(path.join(ROOT, f), "utf8").toLowerCase(); return banned.some((b) => s.includes(b.toLowerCase())); });
             check("no plugin client header and no plugin client id in the new files", hits.length === 0, hits.join(", "));
             check("no request of the mock carried a header beyond the usual ones", mock.http.every((h) => h.headers.every((n) => /^(host|connection|content-type|content-length|accept|accept-encoding|accept-language|user-agent|authorization|mcp-protocol-version|mcp-session-id|sec-fetch-mode|transfer-encoding)$/.test(n))),

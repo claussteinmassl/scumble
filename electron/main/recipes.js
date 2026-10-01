@@ -174,7 +174,8 @@ async function readDir(dir, source) {
 // `text: { model, sizes }`, or switches it off with `text: false`. Magnific's edit routes end in "-edit" and differ in
 // more than the name, so every magnific variant names its text route (or `text: false`); tools/magnific_test.js holds them to it.
 // Oxen.ai uses the same id on /images/generate (Grok Imagine's text model is another id: its variant names it).
-const TEXT_PROVIDERS = new Set(["toapis", "openai", "gemini", "bfl", "fal", "replicate", "wavespeed", "openrouter", "ark", "comfyrouter", "comfypartner", "oxen", "magnific", "loopback"]);
+// Magnific (subscription) names images_generate as its text model (recipes/magnificsub_generate.json).
+const TEXT_PROVIDERS = new Set(["toapis", "openai", "gemini", "bfl", "fal", "replicate", "wavespeed", "openrouter", "ark", "comfyrouter", "comfypartner", "oxen", "magnific", "magnificsub", "loopback"]);
 
 // The long sides a provider documents for a generated image. Gemini's image models take
 // 1K, 2K or 4K (imageConfig.imageSize), OpenAI's the three standard shapes at 1024 and 1536;

@@ -1,0 +1,69 @@
+{
+  "id": "magnificsub_retouch",
+  "kind": "provider",
+  "name": "Magnific Retouch (subscription)",
+  "family": "Magnific",
+  "description": "Magnific's retouch on your Magnific plan's credits, after signing in under Settings › API providers: the selection goes as the mask, and only it changes. Replace paints what the prompt says, Erase removes what is selected. Not run against the live service yet.",
+  "default": "magnificsub",
+  "providers": {
+    "magnificsub": {
+      "model": "images_retouch",
+      "input": "fill",
+      "text": false,
+      "settings": [
+        {
+          "index": 1,
+          "key": "mode",
+          "label": "Mode",
+          "spec": [
+            [
+              "Replace",
+              "Erase"
+            ],
+            {
+              "default": "Replace"
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "key": "model",
+          "label": "Model",
+          "spec": [
+            [
+              "Auto",
+              "Classic",
+              "Erase",
+              "Google Nano Banana Pro",
+              "Google Nano Banana 2"
+            ],
+            {
+              "default": "Auto"
+            }
+          ]
+        },
+        {
+          "index": 3,
+          "key": "resolution",
+          "label": "Resolution",
+          "spec": [
+            [
+              "Default",
+              "1k",
+              "2k",
+              "4k"
+            ],
+            {
+              "default": "Default"
+            }
+          ]
+        }
+      ],
+      "note": "Runs on your Magnific plan (Premium, Premium+ or Pro) through Magnific's MCP server (mcp.magnific.com), after signing in under Settings › API providers; each run spends the plan's credits, the same balance as Magnific's web app, and the status line says how many. The pictures are uploaded to Magnific (Freepik Company S.L., Málaga, Spain) as hidden uploads; the results are Magnific creations and show in your Magnific library. Not run against the live service yet. Real mask inpainting: the crop and the selection (black and white) go together, at most 2048 px on the long side in multiples of 8 (Magnific renders a retouch inside the request, which fails on larger pictures). Replace needs a prompt, Erase takes none. Auto lets Magnific pick the model; Classic and both Nano Banana models replace only, Erase erases only. Resolution only for the Nano Banana models (Pro: 2k or 4k, 2: 1k, 2k or 4k); Default is the model's own. Reference layers are not sent."
+    }
+  },
+  "limits": {
+    "max": 2048,
+    "step": 8
+  }
+}

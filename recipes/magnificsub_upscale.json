@@ -1,0 +1,159 @@
+{
+  "id": "magnificsub_upscale",
+  "kind": "provider",
+  "task": "upscale",
+  "name": "Magnific Upscale (subscription)",
+  "family": "Upscale",
+  "description": "Magnific's upscalers on your Magnific plan's credits, after signing in under Settings › API providers: Creative adds detail guided by the prompt, the four Precision modes keep the picture as it is. 2, 4, 8 or 16 times (Precision photo, photo denoiser and v1: 2 times only). Not run against the live service yet.",
+  "default": "magnificsub",
+  "factor": {
+    "default": 2,
+    "min": 2,
+    "max": 16,
+    "steps": [
+      2,
+      4,
+      8,
+      16
+    ]
+  },
+  "usesPrompt": true,
+  "providers": {
+    "magnificsub": {
+      "model": "images_upscale",
+      "settings": [
+        {
+          "index": 1,
+          "key": "mode",
+          "label": "Mode",
+          "spec": [
+            [
+              "Creative",
+              "Precision sublime",
+              "Precision photo",
+              "Precision photo denoiser",
+              "Precision v1"
+            ],
+            {
+              "default": "Creative"
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "key": "preset",
+          "label": "Preset",
+          "spec": [
+            [
+              "None (sliders)",
+              "Subtle",
+              "Vivid",
+              "Wild",
+              "Balanced",
+              "Portraits",
+              "Grainy analog"
+            ],
+            {
+              "default": "None (sliders)"
+            }
+          ]
+        },
+        {
+          "index": 3,
+          "key": "optimised",
+          "label": "Optimized for",
+          "spec": [
+            [
+              "Standard",
+              "Soft portraits",
+              "Hard portraits",
+              "Art and illustration",
+              "Video game assets",
+              "Nature and landscapes",
+              "Film and photography",
+              "3D renders",
+              "Science fiction and horror"
+            ],
+            {
+              "default": "Standard"
+            }
+          ]
+        },
+        {
+          "index": 4,
+          "key": "engine",
+          "label": "Engine",
+          "spec": [
+            [
+              "Automatic",
+              "Illusio",
+              "Sharpy",
+              "Sparkle"
+            ],
+            {
+              "default": "Automatic"
+            }
+          ]
+        },
+        {
+          "index": 5,
+          "key": "creativity",
+          "label": "Creativity",
+          "spec": [
+            "INT",
+            {
+              "default": -3,
+              "min": -10,
+              "max": 10
+            }
+          ]
+        },
+        {
+          "index": 6,
+          "key": "resemblance",
+          "label": "Resemblance",
+          "spec": [
+            "INT",
+            {
+              "default": 3,
+              "min": -10,
+              "max": 10
+            }
+          ]
+        },
+        {
+          "index": 7,
+          "key": "sharpness",
+          "label": "Sharpness",
+          "spec": [
+            "INT",
+            {
+              "default": 7,
+              "min": 0,
+              "max": 100
+            }
+          ]
+        },
+        {
+          "index": 8,
+          "key": "grain",
+          "label": "Grain",
+          "spec": [
+            "INT",
+            {
+              "default": 4,
+              "min": 0,
+              "max": 100
+            }
+          ]
+        }
+      ],
+      "note": "Runs on your Magnific plan (Premium, Premium+ or Pro) through Magnific's MCP server (mcp.magnific.com), after signing in under Settings › API providers; each run spends the plan's credits, the same balance as Magnific's web app, and the status line says how many. The pictures are uploaded to Magnific (Freepik Company S.L., Málaga, Spain) as hidden uploads; the results are Magnific creations and show in your Magnific library. Not run against the live service yet. Creative takes the prompt as guidance, Optimized for, Engine, Creativity and Resemblance; the Precision modes take Sharpness and Grain. Preset: Subtle, Vivid and Wild are Creative's presets, Balanced, Portraits and Grainy analog the Precision macros; a preset sets the sliders on Magnific's side, so the sliders go only with \"None (sliders)\". Precision photo, photo denoiser and v1 upscale 2 times only; another factor is refused before anything is uploaded. Upscale (the button next to Generate) runs it on the selection, which comes back sharper at the document's resolution, or on the whole picture, which becomes N times larger with every layer scaled along."
+    }
+  },
+  "limits": {
+    "min": 32,
+    "max": 4096,
+    "step": 1
+  }
+}

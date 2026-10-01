@@ -362,7 +362,7 @@ const png = (bytes) => new Response(bytes, { status: 200, headers: { "content-ty
         const logged = [];
         require.cache[logPath] = { id: logPath, filename: logPath, loaded: true, exports: { record: (e) => logged.push(e) } };
         const index = withElectron(() => require(P("electron", "main", "providers", "index.js")));
-        check("fal, Magnific, Comfy Cloud, Comfy Router, Oxen.ai and loopback have an upscaler, nothing else", eq(index.upscaleProviders().sort(), ["comfycloud", "comfyrouter", "fal", "loopback", "magnific", "oxen"]), short(index.upscaleProviders()));
+        check("fal, Magnific, Magnific (subscription), Comfy Cloud, Comfy Router, Oxen.ai and loopback have an upscaler, nothing else", eq(index.upscaleProviders().sort(), ["comfycloud", "comfyrouter", "fal", "loopback", "magnific", "magnificsub", "oxen"]), short(index.upscaleProviders()));
         const t = await throwsWith(() => index.edit({ provider: "bfl", kind: "upscale", model: "x", image: IMG }), /has no upscaler/);
         check("a provider without an upscaler is refused by name", t.ok, t.msg);
         const k = await throwsWith(() => index.edit({ provider: "magnific", kind: "upscale", model: "image-upscaler", image: IMG, factor: 2 }), /No API key for Magnific/);

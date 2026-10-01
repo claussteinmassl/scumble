@@ -111,7 +111,8 @@ function json(res, status, body, headers = {}) {
  *           expireAccess(): every access token issued so far stops working, refreshFails: true (invalid_grant),
  *           realTokens: true (the next tokens issued do not start with "test-": the client must refuse to use them),
  *           waitMs (how long creations_wait sits on a processing creation, default 20), downloadUrl (overrides
- *           originals[].url), credits (what a creation costs, default 90)
+ *           originals[].url), credits (what a creation costs, default 90), result (the bytes every finished creation
+ *           of an images_* tool downloads as; default a small PNG tagged "RESULT <id>")
  */
 async function start({ port = 0 } = {}) {
     const { Server } = require("@modelcontextprotocol/sdk/server/index.js");
@@ -123,7 +124,7 @@ async function start({ port = 0 } = {}) {
     const calls = [];
     const httpLog = [];
     const oauth = { registrations: [], authorizations: [], grants: [], foreignTokens: [] };
-    const script = { put: [], reject401: 0, refreshFails: false, realTokens: false, waitMs: 20, downloadUrl: null, credits: 90, expireAccess: null };
+    const script = { put: [], reject401: 0, refreshFails: false, realTokens: false, waitMs: 20, downloadUrl: null, credits: 90, result: null, expireAccess: null };
     const clients = new Map();      // client_id -> registered metadata
     const codes = new Map();        // code -> { client_id, redirect_uri, challenge }
     const access = new Set();       // valid access tokens
@@ -345,7 +346,7 @@ async function start({ port = 0 } = {}) {
                 const c = creations.get(id);
                 if (!c) return json(res, 404, { error: "unknown asset" });
                 res.writeHead(200, { "content-type": "image/png" });
-                return res.end(c.bytes || fakePng(64, 48, "RESULT " + id));
+                return res.end(c.bytes || (script.result && Buffer.from(script.result)) || fakePng(64, 48, "RESULT " + id));
             }
             if (u.pathname === "/") return await mcpRoute(req, res);
             json(res, 404, { error: "not found" });
