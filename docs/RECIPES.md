@@ -2075,8 +2075,9 @@ instead of an API key. A subscriber can so run Magnific without an API plan. `ma
 a provider of its own, `electron/main/providers/magnificsub.js`, with the sign-in in `magnificsub_auth.js`, the
 static tables in `magnificsub_tables.js` and the retouch geometry in `magnificsub_pictures.js`. The plan and the
 reasons are in `docs/PLAN_MAGNIFIC_SUB.md`. **Run live on 2026-10-01** with the subscription (a Premium+ plan): a
-Creative upscale, a Retouch, a Cutout and Generate new on Auto. Edits through the model recipes (the crop through
-`images_generate`) and the newly mapped models have not run live yet; they are tested against a mock.
+Creative upscale, a Retouch, a Cutout and Generate new on Auto; after the restructure an edit on Seedream 5 Pro through
+`seedream_5_pro` (the crop through `images_generate`, edited correctly, 100 credits) and Generate new on
+`magnific_auto` (75 credits). The other mapped models have not run live yet; they are tested against a mock.
 
 **The sign-in.** Settings › API providers shows no key field for this provider: the row reads "not signed in" with
 **Sign in**, "waiting for the browser…" with **Cancel**, or "signed in as <email> (plan)" with **Sign out** and "check
@@ -2148,7 +2149,7 @@ restructure (2026-10-01). A stored selection naming one (`recipe`, `recipeByMode
 `magnific_creative`, `magnific_precision` or `magnific_auto` with the provider `magnificsub` when the settings are
 read (`electron/main/settings.js` `migrateRecipes`); a leftover `recipeProviders` entry of a removed id is dropped
 and carries nothing over on its own (only a removed id still selected switches its replacement to `magnificsub`, so a
-leftover never moves a user from their API key to plan credits). The adapter still runs their shapes for an agent or an imported copy:
+leftover never moves a user from their API key to plan credits). A document saved with the old Magnific Generate (subscription) recipe's model choice now runs on Magnific Auto: its Model row is no longer read, the recipe names the model. The adapter still runs their shapes for an agent or an imported copy:
 `images_generate` with a Model row, `images_upscale:creative` / `:precision`, a bare `images_upscale`.
 
 An upscale variant's `limits` are 32 to 4096 like the other upscalers (Magnific's real limit on this route is not

@@ -270,4 +270,6 @@ list (Flux.2 Flex, Google Nano Banana 2 Lite, Seedream 4.5, Seedream 5 Lite, Ide
   magnificsub) shows Magnific Creative with "Magnific (subscription)" picked: it worked without a change, checked in
   a dev instance on a profile with the old ids and in the gate `magnificsub`.
 
-**Not done:** nothing of the restructure ran live.
+**Live (2026-10-01, the user's account):** an edit on Seedream 5 Pro through the subscription (`seedream_5_pro`, the
+crop through `images_generate`) edited the crop correctly, 100 credits; Generate new on `magnific_auto` worked, 75
+credits. The other mapped models and the own recipes but Magnific Auto have not run live. A document saved with the old Magnific Generate (subscription) recipe's model choice now runs on Magnific Auto: its Model row is no longer read, the recipe names the model.
