@@ -111,5 +111,22 @@ Written 2026-09-30, after the work. Everything in the repository was done; the d
 - **The helpers for Cmd** live in `renderer/editor/platform.js` (copied into the ComfyUI node by `tools/build_node.py`),
   because `host.js` needs them and the node has its own `host.js`. Labels are rewritten by `keyText`, which turns the
   word "Ctrl" into "Cmd" on darwin, not only "Ctrl+".
+- **The dmg** is signed, notarized and stapled by `build/notarize-dmg.js` (an `afterAllArtifactBuild` hook);
+  electron-builder does that for the app only. The macOS CI job therefore builds with `--publish never` and uploads
+  to the draft release itself, after the hook.
 - **Not done or not checked** is in `docs/BUGS.md`, "macOS: built and run, with gaps".
+
+### Verification (2026-10-01)
+
+- **macOS** (Apple Silicon, macOS 26.2, `--offline`, both backends): every gate that needs no ComfyUI and no key passes
+  against the dev app, the unsigned package and the signed package, plus `document`, `docux` and `quit`.
+- **Signing**: `codesign --verify --deep --strict` valid; `spctl` accepts the app and the dmg as "Notarized Developer
+  ID"; the dmg's staple validates; a quarantined copy opens with only the standard first-open sheet. onnxruntime-node
+  loads under the hardened runtime (CoreML, then CPU); no helper model was installed, so the provider in use was not
+  measured. A release build must not be made inside a cloud-synced folder (`docs/RELEASING.md`).
+- **Windows** (a Windows 11 VM, `main` against this branch, both backends): lint, types, the plain-Node tests, the x64
+  installer and the gates commands, shape, size, platform, mcp, document and quit give the same verdicts on both;
+  editor, film and composite fail on both alike (the VM's software GPU and small canvas). The packaged exe still quits
+  when its window closes, and the menus are the same as on `main`.
+- **Linux**: not run here; CI builds it, and `platform_test.js` covers its file list.
 
