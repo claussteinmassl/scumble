@@ -53,7 +53,7 @@ body.shell-canvas-only #editor-host { position: fixed !important; inset: 0 !impo
 #shell-canvas-hint { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 10001; padding: 6px 14px; border-radius: var(--sc-radius-lg, 6px); background: rgba(0, 0, 0, 0.72); color: #eee; font: 13px/1.3 var(--sc-font, system-ui, sans-serif); pointer-events: none; white-space: nowrap; animation: shell-canvas-hint 3.6s ease-in forwards; }
 @keyframes shell-canvas-hint { 0%, 75% { opacity: 1; } 100% { opacity: 0; } }
 
-#shell-settings { background: var(--sc-surface, #202020); color: var(--sc-fg, #ddd); border: 1px solid var(--sc-border, #444); border-radius: var(--sc-radius-lg, 6px); padding: 0; width: 560px; max-width: 92vw; font: 13px/1.4 var(--sc-font, system-ui, sans-serif); }
+#shell-settings { background: var(--sc-surface, #202020); color: var(--sc-fg, #ddd); border: 1px solid var(--sc-border, #444); border-radius: var(--sc-radius-lg, 6px); padding: 0; width: 680px; max-width: 92vw; font: 13px/1.4 var(--sc-font, system-ui, sans-serif); }
 #shell-settings::backdrop { background: var(--sc-backdrop, rgba(0, 0, 0, 0.55)); }
 #shell-settings form { padding: 16px 20px 14px; display: flex; flex-direction: column; gap: 12px; }
 #shell-settings h2 { margin: 0 0 4px; font-size: 16px; color: var(--sc-accent, #f0c674); }
@@ -71,13 +71,13 @@ body.shell-canvas-only #editor-host { position: fixed !important; inset: 0 !impo
 #shell-progress.indeterminate #shell-progress-bar { width: 40%; animation: shell-slide 1.2s ease-in-out infinite alternate; background: var(--sc-active, #8a6fb5); }
 @keyframes shell-slide { from { left: 0; } to { left: 60%; } }
 #shell-settings { max-height: 92vh; overflow-y: auto; }
-.shell-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; margin-top: 8px; }
+.shell-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px 12px; margin-top: 8px; }
 .shell-grid .shell-field select { width: 100%; }
 .shell-report { background: var(--sc-well, #141414); border: 1px solid var(--sc-line, #333); border-radius: var(--sc-radius-sm, 3px); padding: 6px 8px; margin: 8px 0 0; font: 12px/1.4 var(--sc-font-mono, ui-monospace, Consolas, monospace); color: var(--sc-fg-2, #bbb); white-space: pre-wrap; max-height: 180px; overflow-y: auto; }
 .shell-report .ok { color: var(--sc-ok, #7cc47f); }
 .shell-report .bad { color: var(--sc-error, #e0533d); }
-.shell-provider, .shell-recipe { display: grid; grid-template-columns: 130px 1fr auto auto; gap: 6px 8px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--sc-line, #2a2a2a); }
-.shell-recipe { grid-template-columns: 1fr auto auto auto; }
+.shell-provider, .shell-recipe { display: grid; grid-template-columns: 130px minmax(0, 1fr) auto auto; gap: 6px 8px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--sc-line, #2a2a2a); }
+.shell-recipe { grid-template-columns: minmax(0, 1fr) auto auto auto; }
 .shell-recipe select { min-width: 150px; max-width: 190px; }
 .shell-recipe.active .shell-recipe-name { color: var(--sc-fg-strong, #fff); font-weight: 600; }
 .shell-provider:last-child, .shell-recipe:last-child { border-bottom: 0; }
@@ -93,7 +93,7 @@ body.shell-canvas-only #editor-host { position: fixed !important; inset: 0 !impo
 #shell-settings a { color: var(--sc-accent, #f0c674); }
 
 /* helpers: one row per model */
-.shell-model { display: grid; grid-template-columns: 120px 1fr auto; gap: 4px 8px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--sc-line, #2a2a2a); }
+.shell-model { display: grid; grid-template-columns: 120px minmax(0, 1fr) auto; gap: 4px 8px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--sc-line, #2a2a2a); }
 .shell-model:last-child { border-bottom: 0; }
 .shell-model .shell-model-info { color: var(--sc-muted, #888); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .shell-model .shell-model-info.present { color: var(--sc-ok, #7cc47f); }
