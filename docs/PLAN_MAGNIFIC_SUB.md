@@ -120,3 +120,42 @@ lets a subscriber run Magnific from Scumble without an API plan.
 
 ## Not in scope
 - Outpainting, video, audio, 3D, stock; a run-time model catalog; an estimate or a confirmation before a run.
+
+## Results (2026-10-01)
+
+Built on the branch `magnific-subscription` in four tasks: the sign-in and the MCP session with a mock (Task 1), the
+verbs, the registry hook and the recipes (Task 2, with a fix round), the Settings row, the IPC, the cutout backend
+and the gate (Task 3), and the docs (Task 4). **The live run is still to come** (one upscale, one retouch, one
+generate, one cutout on a small picture, with the user's account, the cost estimated with `simulate_cost` first); no
+run has touched Magnific's service.
+
+### What was built, as designed
+- `magnificsub_auth.js` (OAuth with PKCE and dynamic registration, the loopback redirect, the host rule, a sign-in that
+  keeps the old one on failure), `magnificsub.js` (the session: upload, wait, download, the verbs, balance),
+  `providers/index.js` (the `ready()` hook, `auth: "oauth"` rows, IPC `providers:status|signIn|cancelSignIn|signOut|cutout`).
+- The Settings row (Sign in / Cancel / Sign out, "check balance"), the status line's credits, the cutout backend
+  (only while signed in, listed last, never the default).
+
+### Deviations from the plan above
+- **Four recipes, not three.** Upscale is split into **Magnific Creative (subscription)** and **Magnific Precision
+  (subscription)**, because a recipe variant has eight setting slots and the twelve upscale controls did not fit one.
+  With Retouch and Generate that makes four (`magnificsub_creative|precision|retouch|generate.json`).
+- **The generate list offers the models the account's catalog lists**, beta or private ones marked "(beta)": GPT 2.5,
+  Ideogram 4.5 and Qwen Image 3.0 Pro. The catalog flags are pinned in a test. Retouch's list has no beta entry.
+- **Retouch crops are padded to multiples of 8** (scaled first with the aspect kept when larger than 2048) and the
+  answer is cut back to the crop, so the pixels stay 1:1 within 2048 (`magnificsub_pictures.js`).
+- **The credits used show in the status line for this provider only** (not for Comfy Router or ToAPIs, whose lines
+  stay as they were).
+- **The cutout backend appears only while signed in and is never the default** (`paid` backends are listed last).
+- The `images_generate` field is `mode`, not `model`; `count: 1` and the seed go along. Mystic 2.5 and Recraft V4.1
+  take reference layers as style pictures. The tables and the picture helpers are in `magnificsub_tables.js` and
+  `magnificsub_pictures.js`. A creation tool that loses its connection is not sent again (no double charge).
+
+### Tests that exist
+- `node tools/magnificsub_test.js` (plain Node, 153 checks) against `tools/magnificsub_mock.js`: sign-in, session,
+  every verb's arguments against the copied schemas, upload retries, wait, host rule, retouch geometry, registry hook.
+- The gate `magnificsub` (`tools/magnificsub_test.py`, `--offline`): the Settings row signed out, in and out, the four
+  recipes, one run of each verb through the window with the credits in the status line, the cutout list. Also
+  `tools/recipes_test.js`, `tools/upscale_test.js` and the `magnific` gate (its row filter narrowed to leave the new row out).
+- Not covered: the real realm, a real run, Windows and Linux redirects (`docs/BUGS.md`).
+

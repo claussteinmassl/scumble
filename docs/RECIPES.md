@@ -2067,6 +2067,108 @@ instruction edit widened to a preset, Ideogram's inverted mask, Image Expand aft
 sent, Generate new through Mystic and Z-Image, and a real key never reaching the mock. `tools/size_test.py` has two
 steps for `aspects`; `tools/upscale_test.js` and `.py` still cover the upscalers unchanged.
 
+### Magnific (subscription) (`magnificsub`)
+
+The same company, the other door: Magnific's MCP server (`https://mcp.magnific.com`) runs on the credits of the
+user's web plan (Premium, Premium+, Pro), the same balance as the web app, and signs in with a Magnific account
+instead of an API key. A subscriber can so run Magnific without an API plan. `magnific` above stays as it is; this is
+a provider of its own, `electron/main/providers/magnificsub.js`, with the sign-in in `magnificsub_auth.js`, the
+static tables in `magnificsub_tables.js` and the retouch geometry in `magnificsub_pictures.js`. The plan and the
+reasons are in `docs/PLAN_MAGNIFIC_SUB.md`. **Not run against the live service yet**: everything here is tested
+against a mock.
+
+**The sign-in.** Settings › API providers shows no key field for this provider: the row reads "not signed in" with
+**Sign in**, "waiting for the browser…" with **Cancel**, or "signed in (plan)" with **Sign out** and "check
+balance". Sign in is OAuth with PKCE (S256) and dynamic client registration: Scumble registers its own public
+client with a loopback redirect (`http://127.0.0.1:<port>/callback`, an ephemeral port of the main process, listened
+on for one request and at most 10 minutes), opens the authorization URL with `shell.openExternal` and checks the
+`state` of the answer. It presents itself as Scumble, not as one of Magnific's plugins. The client information and
+the tokens are one JSON value under the name `magnificsub` in `keys.js` (safeStorage); nothing in `settings.json`.
+A cancelled or failed sign-in leaves the stored one untouched; Sign out forgets it. A run never opens a browser: a
+refresh that fails ends with "Sign in to Magnific again (Settings › API providers)."
+
+**The host rule.** The server is fixed to `https://mcp.magnific.com`. A bearer token goes only there, the refresh
+goes only to the origin the sign-in recorded (a stored sign-in without one asks to sign in again), upload and
+download URLs must be https, and no local or private host is accepted in real mode. `settings.magnificsub.base` may
+name a mock on `http://127.0.0.1:<port>`, and then only test credentials (`test-...`) are accepted, as with
+`magnific`'s `base`.
+
+**The protocol.** One lazily connected MCP client per process (the SDK's `StreamableHTTPClientTransport` and its
+`OAuthClientProvider`). A run is: `creations_request_upload` -> an HTTP PUT of the bytes (a 5xx or a network error
+retried three times, a 4xx not) -> `creations_finalize_upload` with `visible: false` -> the tool -> `creations_wait`
+(at most 25 s per call, repeated up to 15 minutes, for an upscale 50) -> `creations_register_download`, which gives the untouched PNG
+(the result's own URL is a JPEG re-encode). An upload over 25 MB is refused before any request. A transport error
+reconnects once and sends the call again only for tools that cannot charge; a creation tool that loses its
+connection says so ("it may still run and be charged") instead of running twice. A failed creation ends the run with
+Magnific's reason; a timeout says the creation may still finish in the user's Magnific library.
+
+**Four recipes**, all `default: "magnificsub"`, curated and static (the account's catalog is not read at run time):
+
+| Recipe | Tool | What it does |
+|---|---|---|
+| `magnificsub_creative`, Magnific Creative (subscription) | `images_upscale` | Family *Upscale*, factor 2, 4, 8, 16, the prompt goes along. Rows: Preset (Subtle, Vivid, Wild, Custom (sliders)), Optimized for, Engine, Creativity, Resemblance, HDR, Fractality. A named preset goes alone; the four sliders go only with "Custom (sliders)". |
+| `magnificsub_precision`, Magnific Precision (subscription) | `images_upscale` | Family *Upscale*, no prompt. Rows: Mode (Precision sublime, photo, photo denoiser, v1), Precision preset (None (sliders), Balanced, Portraits, Grainy analog), Sharpness, Grain, Ultra detail. Sublime takes 2, 4, 8, 16 and no Ultra detail; photo, photo denoiser and v1 take 2 only, and another factor is refused before the upload. A preset goes alone, the sliders only with "None (sliders)". |
+| `magnificsub_retouch`, Magnific Retouch (subscription) | `images_retouch` | `input: "fill"`, `text: false`: the crop and the selection (white = change) as the mask. Rows: Mode (Replace, Erase), Model (Auto, Classic, Erase, Google Nano Banana Pro, Google Nano Banana 2), Resolution (Default, 1k, 2k, 4k; only the two Nano Banana models have one, a value the model lacks is refused before the upload). Replace needs a prompt, Erase takes none. Reference layers are not sent. |
+| `magnificsub_generate`, Magnific Generate (subscription) | `images_generate` | Generate new only (`edit: false`), up to 12 reference layers, `count: 1`. Row: Model. The aspect is the model's closest to the asked size; the model picks the pixel size. |
+
+An upscale recipe's `limits` are 32 to 4096 like the other upscalers (Magnific's real limit on this route is not
+known). A bare `images_upscale` from an agent lets the Mode decide, Creative the default; a mode of the other kind
+than the recipe's is refused. The adapter's own sentinel `images_upscale:creative` / `:precision` in `model` carries
+the kind.
+
+**Models.** The generate and retouch lists are the models the account's catalog lists (copied to
+`tools/refs/magnificsub/catalog_*.txt` on 2026-10-01), cut to a curated set. The rule: the models the account's catalog
+lists are offered, and one the catalog marks beta or private carries "(beta)" in its label, which a live run confirms. Today that is GPT 2.5, Ideogram 4.5 and Qwen Image 3.0 Pro. `tools/magnificsub_test.js`
+checks every label against the catalog's name and flags. Generate: Auto, Flux.2 Pro, Flux.2 Max, GPT 2, GPT 2.5
+(beta), Google Nano Banana Pro, Google Nano Banana 2, Seedream 5 Pro, Ideogram 4.5 (beta), Mystic 2.5, Recraft V4.1,
+Qwen Image 3.0 Pro (beta). Mystic 2.5 and Recraft V4.1 take no image reference, so reference layers go to them as
+style pictures, which the prompt cannot name (`index.js` refuses a prompt that does). The aspect lists are the
+catalog's cut to the `images_generate` schema's enum, and the field the adapter sends is `mode`, not `model`.
+
+**The retouch crop.** Magnific renders a retouch inside the HTTP request, which dies at about 30 s on large
+pictures, so image and mask go at most 2048 px on the long side and on multiples of 8. Within 2048 the crop is not
+scaled: it is padded to the next multiple of 8 (the picture repeats its edge, the mask is black, that is "keep") and
+the answer is cut back to the crop's size, byte for byte when Magnific answers at the sent size, resampled in
+proportion when it answers at another. Above 2048 the crop is scaled first with its aspect kept (3000 x 1000 ->
+2048 x 683, padded to 2048 x 688), then cut back and scaled up to the crop. A crop that needed no change gets its
+answer back untouched. The mask is binary (the first channel at 128). The scaling is plain JS in
+`magnificsub_pictures.js` because the contract's `ctx` has no resize.
+
+**Credits.** No estimate before a run (no provider has one). The tool's `credits` go into the result's `info`, and
+the status line of an edit, an upscale (both scopes), Generate new and a cutout appends " (N credits)" for this
+provider only (`creditsNote` in `host.js`; Comfy Router and ToAPIs keep their lines). "check balance" in the Settings
+row calls `account_balance` and shows "N credits (plan)". The uploads are hidden (`visible: false`); the results are
+Magnific creations and show in the user's Magnific library.
+
+**The cutout backend.** `images_remove_background`, the result's alpha as a grey mask (white = keep). It appears in
+the cutout backends only while signed in (`host.cutoutBackends`, `paid: true`) and is listed last, so a
+credit-spending backend never becomes the default while a free one exists (`availableCutoutBackends`). The layer
+goes out as a PNG (transparent on black, the long side at most 2048 px).
+
+**Registry hook.** An adapter may declare `auth: "oauth"` and `ready()` beside `needsKey`; `providers.edit` and
+`balance` then ask `ready()` (signed in) instead of the key, and `describeAll` adds `auth` and `signedIn` to such a
+row (the other rows keep their seven fields). IPC: `providers:status|signIn|cancelSignIn|signOut|cutout`. `magnificsub` is in `TEXT_PROVIDERS`.
+
+**Not in this step.** Outpainting (`images_expand` takes fixed aspect ratios, not margins per side), video, audio,
+3D, stock, a run-time model catalog, an estimate or a confirmation before a run. The server has 187 tools; the adapter uses nine of them, and their schemas are in `tools/refs/magnificsub/`.
+
+**Tests.** `node tools/magnificsub_test.js` (plain Node, 153 checks: the sign-in against the mock's OAuth realm, the
+session, every verb's arguments against the copied schemas, the upload and its retries, the wait, the host rule, the
+retouch geometry, the registry hook, index.js's sign-in and cutout) against `tools/magnificsub_mock.js`
+(`node tools/magnificsub_mock.js --port N`, or `--app` for decodable pictures and `GET /__mock/calls`; scripted
+triggers: a prompt or file name `mock-failed`, `mock-slow`, upload bytes `mock-put-503`, and the `script` object for
+401s, expiry, a failing refresh, credits and results). The gate `magnificsub` (`tools/magnificsub_test.py`) runs it
+first, then the app with `settings.magnificsub.base` on the mock: the row signed out, in and out again, the four
+recipes' "(not signed in)" labels, one run of each verb through the window with the credits in the status line,
+and the cutout list. Run it with `bash tools/run_gates.sh <label> --offline --tiles on magnificsub`. With the base on
+the mock the app opens no browser: the authorization URL waits in `providers:status`.
+
+**Only a real account can verify** (each run costs credits; waits for the user's word): the sign-in on the real
+realm (including the redirect on Windows and Linux), one run of each verb, the real `creations_wait` status words and
+whether `creations` or `creation` comes back for `count: 1`, token lifetimes (the SDK refreshes on a 401, not
+beforehand), Magnific's real size limits for an upscale and a retouch, whether the beta models answer for the
+account, and the per-model cap on style references (12 is the schema's general one).
+
 ### Oxen.ai (`oxen`)
 
 [Oxen.ai](https://www.oxen.ai) runs many image and chat models behind one key. Sources, read on 2026-09-26: the docs

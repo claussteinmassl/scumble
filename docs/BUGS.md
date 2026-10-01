@@ -262,6 +262,32 @@ An entry here leaves the file when the release named in it is published.
 
 ## Open
 
+### Magnific (subscription): what was not checked (2026-10-01, built against a mock, no live run)
+
+**Written** with the provider (`docs/PLAN_MAGNIFIC_SUB.md`, `docs/RECIPES.md` "Magnific (subscription)"). Everything ran
+against `tools/magnificsub_mock.js`; no run touched Magnific's real service.
+
+- **The real-mode sign-in redirect was not checked on Windows or Linux.** The loopback server and
+  `shell.openExternal` are one short path, read but never run against the real realm. A firewall or a browser that
+  blocks `127.0.0.1` callbacks would end the sign-in at its 10-minute timeout. To check: a sign-in on each system, then
+  "check balance".
+- **The generate and retouch model lists are curated, not the full catalog.** The server offers far more models than
+  the dozen the recipes list, and a model's reference types and aspect lists are the catalog's cut to the tool schema,
+  fixed in the recipe. A new model on Magnific's side shows up only with a new Scumble.
+- **Beta or private models are only marked.** GPT 2.5, Ideogram 4.5 and Qwen Image 3.0 Pro carry "(beta)"; whether
+  each answers for an ordinary account is not known.
+- **Results stay visible in the user's Magnific library.** The uploads are hidden (`visible: false`), the results are
+  Magnific creations; Scumble cannot hide or delete them.
+- **The MCP tools are made for agents and may change without notice.** The schemas are copied to
+  `tools/refs/magnificsub/` as of 2026-10-01; a renamed field or a new required one fails a run with Magnific's own
+  error text. Re-read the schemas when a run fails on arguments.
+- **The `cutout_layer` command fails for in-app backends** (found by the Task 3 gate, older than this provider):
+  `cutoutLayer` awaits an in-app run to its end, so `if (!ed.cutoutPending) throw new Error(ed.status)` throws even
+  when the run succeeded. The `magnificsub` gate calls `ed.cutoutLayer()` directly. Fix: do not treat a finished
+  in-app run as "nothing pending"; test with the command through MCP afterwards.
+- **Not measured live:** the real `creations_wait` status words, whether `count: 1` answers `creation` or `creations`,
+  token lifetimes, Magnific's real size limits for an upscale and a retouch.
+
 ### Switching between the local recipes keeps the other recipe's model files (found by the 26e review, 2026-09-29)
 
 **Found** by the review of item 26 step 26e (read, and reproduced in a plain-Node copy of the three functions; not run in
