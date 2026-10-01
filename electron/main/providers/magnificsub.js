@@ -20,8 +20,21 @@
 //   upscale(req)    one upload, images_upscale { creationIdentifier, mode, scale: "<factor>x", the mode's own keys }
 //   edit(req)       kind "fill": image and mask at most 2048 px (scaled only above), padded to multiples of 8, two uploads,
 //                   images_retouch { creationIdentifier, maskCreationIdentifier, mode, prompt?, model?, resolution? }
+//                   kind "edit": the crop and the reference layers uploaded, images_generate { prompt, mode,
+//                   aspectRatio, count: 1, references: [{ type: "image", identifier }] (the crop first), seed? }
 //   generate(req)   kind "text": the reference layers uploaded, images_generate { prompt, mode, aspectRatio, count: 1,
 //                   references?: [{ type, identifier }], seed? }
+//
+// What a recipe variant names in its `model` (the dropdown picks the provider, the recipe the model):
+//
+//   a generate model   the catalog slug ("seedream-5-pro", "flux-2"; magnificsub_tables.js GENERATE_MODELS), for
+//                      kind "edit" (input "edit") and kind "text" (its `text.model`, the same slug)
+//   an upscaler        "creative", or "precision" with a Mode row (key "mode", the Precision mode's label or slug;
+//                      Precision sublime when empty); a mode's slug ("ultra-photo") also names that mode as the default
+//   the retouch        "images_retouch" with input "fill" (recipes/magnificsub_retouch.json)
+//
+// The recipes before the model recipes took them over still run: "images_generate" with the model in a Model row
+// (key "model"), "images_upscale:creative" and "images_upscale:precision".
 //   cutout(png)     images_remove_background -> the result's alpha as a grey mask (white = keep)
 //   balance()       account_balance -> "N credits (plan)"
 //   ready()         { ok } or { ok: false, reason }: signed in or not; index.js asks it instead of the key check
@@ -324,11 +337,12 @@ class Session {
 
 // ---- the verbs -----------------------------------------------------------------------------------------------------
 //
-// The provider contract of providers/index.js on top of the session: upscale, edit (kind "fill", Magnific's retouch),
-// generate (kind "text", Generate new with reference layers), plus cutout and balance for the Settings row and the
-// cutout backends. The recipes (recipes/magnificsub_*.json) show labels in their rows; magnificsub_tables.js turns a
-// label (or the slug itself, for an agent) into what the tool takes, and anything else is refused before a picture is
-// uploaded. The pixel work is in magnificsub_pictures.js.
+// The provider contract of providers/index.js on top of the session: upscale, edit (kind "fill", Magnific's retouch;
+// kind "edit", a generate model on the crop), generate (kind "text", Generate new with reference layers), plus cutout
+// and balance for the Settings row and the cutout backends. The variant's `model` names the model or the upscaler (the
+// header above); the recipes' rows show labels, and magnificsub_tables.js turns a label (or the slug itself, for an
+// agent) into what the tool takes; anything else is refused before a picture is uploaded. The pixel work is in
+// magnificsub_pictures.js.
 
 const LABEL = T.LABEL;
 const SIGN_IN_FIRST = "Sign in to Magnific (subscription) first: Settings › API providers.";
@@ -381,21 +395,33 @@ function codecOf(ctx, what) {
 // ---- upscale -----------------------------------------------------------------------------------------------------
 
 /**
- * Which recipe a request comes from: the variant's model "images_upscale:creative" or "images_upscale:precision"
- * (recipes/magnificsub_creative.json, magnificsub_precision.json); null for the bare tool name (an agent), where the
- * Mode row alone decides.
+ * The upscale mode of a request: { mode, kind }. The variant's `model` names the recipe it belongs to: "creative"
+ * (recipes/magnific_creative.json) or "precision" (magnific_precision.json, whose Mode row picks the Precision mode,
+ * Precision sublime when empty); a mode's own slug or label ("ultra-photo") makes that mode the default and its recipe
+ * the kind. The older "images_upscale:creative" / "images_upscale:precision" read the same. The bare tool name or none
+ * (an agent): no kind, the Mode row alone decides (Creative when empty). Another model is refused.
  */
-function upscaleKind(model) {
-    const m = /:(creative|precision)$/.exec(String(model || ""));
-    return m ? m[1] : null;
+function upscaleMode(req) {
+    const p = req.params || {};
+    const m = String(req.model || "").trim().replace(/^images_upscale:?/, "");
+    let kind = null, fallback = "Creative";
+    if (m === "creative" || m === "precision") {
+        kind = m;
+        fallback = kind === "precision" ? "Precision sublime" : "Creative";
+    } else if (m) {
+        const named = T.pick(T.UPSCALE_MODES, m, null, "upscale mode");
+        kind = named.kind;
+        fallback = named.label;
+    }
+    const mode = T.pick(T.UPSCALE_MODES, p.mode, fallback, "upscale mode");
+    if (kind && mode.kind !== kind) throw new Error(`${LABEL}: ${mode.label} is not a ${kind === "creative" ? "Creative" : "Precision"} mode; pick the other Magnific upscale recipe.`);
+    return { mode, kind };
 }
 
 /** images_upscale's arguments without the creation: the mode's scale and the keys the mode takes, nothing else. */
 function upscaleArgs(req) {
     const p = req.params || {};
-    const kind = upscaleKind(req.model);
-    const mode = T.pick(T.UPSCALE_MODES, p.mode, kind === "precision" ? "Precision sublime" : "Creative", "upscale mode");
-    if (kind && mode.kind !== kind) throw new Error(`${LABEL}: ${mode.label} is not a ${kind === "creative" ? "Creative" : "Precision"} mode; pick the other Magnific upscale recipe.`);
+    const { mode } = upscaleMode(req);
     const f = Math.round(+req.factor || 2);
     const scale = `${f}x`;
     if (!mode.scales.includes(scale)) throw new Error(`${LABEL}: ${mode.label} upscales by ${T.words(mode.scales)} only, not ${req.factor}x.`);
@@ -487,8 +513,15 @@ function retouchBack(file, pics, ctx) {
     return { ...file, bytes: Buffer.from(ctx.fromBitmap(back)), mime: "image/png" };
 }
 
-async function edit(req, ctx = {}) {
-    if (req.kind !== "fill" || !req.mask || !req.mask.length) throw new Error(`${LABEL} retouch needs the selection as a mask (the variant's input must be fill).`);
+const RETOUCH_TOOL = "images_retouch";
+const GENERATE_TOOL = "images_generate";
+const NEEDS_MASK = `${LABEL} retouch needs the selection as a mask (the variant's input must be fill).`;
+
+/** Whether a request's model is the retouch (its tool's name, or none: the retouch recipe and an agent). */
+const isRetouch = (req) => { const m = String(req.model || "").trim(); return !m || m === RETOUCH_TOOL; };
+
+async function retouch(req, ctx) {
+    if (!req.mask || !req.mask.length) throw new Error(NEEDS_MASK);
     if (!req.image || !req.image.length) throw new Error(`${LABEL}: no picture to retouch.`);
     const args = retouchArgs(req);
     const pics = retouchPictures(req.image, req.mask, ctx);
@@ -500,16 +533,54 @@ async function edit(req, ctx = {}) {
     return answer(retouchBack(file, pics, ctx), { model: args.model || "auto", mode: args.mode, sent: [g.padWidth, g.padHeight] }, ctx);
 }
 
-/** The retouch sends the picture and the mask; the reference layers stay home. */
-function layout(req) {
-    if (req.kind !== "fill") throw new Error(`${LABEL} retouch needs the selection as a mask (the variant's input must be fill).`);
-    return layoutOf({ seq: [["crop", "creationIdentifier"]], own: [["mask", "maskCreationIdentifier"]], drops: "Retouch takes the picture and the mask alone" });
+/**
+ * kind "fill" with the retouch's model: Magnific's retouch (the selection as the mask). kind "edit" with a generate
+ * model's slug: images_generate with the crop as its first reference (editGenerate). A generate model as a fill, and
+ * the retouch as an edit, are refused: the variant's input does not fit its model.
+ */
+async function edit(req, ctx = {}) {
+    if (req.kind === "fill") {
+        if (!isRetouch(req)) throw new Error(`${LABEL}: ${req.model} edits with the crop and a prompt, not with a mask; the variant's input must be edit.`);
+        return retouch(req, ctx);
+    }
+    if (isRetouch(req)) throw new Error(NEEDS_MASK);
+    return editGenerate(req, ctx);
 }
 
-// ---- generate (Generate new) -------------------------------------------------------------------------------------
+/**
+ * Where each picture goes. The retouch (kind "fill") sends the picture and the mask, the reference layers stay home.
+ * An edit with a generate model (kind "edit"): references[0] the crop, then the Original and the reference layers in
+ * their order, numbered from 1 and at most 12 together; the mask stays home (the stitch keeps the selection). A model
+ * that takes a creation only as a style picture cannot edit the crop.
+ */
+function layout(req) {
+    if (req.kind === "fill") {
+        if (!isRetouch(req)) throw new Error(`${LABEL}: ${req.model} edits with the crop and a prompt, not with a mask; the variant's input must be edit.`);
+        return layoutOf({ seq: [["crop", "creationIdentifier"]], own: [["mask", "maskCreationIdentifier"]], drops: "Retouch takes the picture and the mask alone" });
+    }
+    if (isRetouch(req)) throw new Error(NEEDS_MASK);
+    editModel(req);   // an unknown slug or a style-only model is refused here, before anything is sent
+    return layoutOf({ seq: [["crop", "references[0]"], ...refRoles(req).map(([role, i]) => [role, `references[${i + 1}]`, i])], max: REFS_MAX });
+}
 
-function generateModel(params) {
-    return T.pick(T.GENERATE_MODELS, (params || {}).model, "Auto", "model");
+// ---- generate (Generate new, and an edit through images_generate) -------------------------------------------------
+
+/**
+ * The generate model of a request: the variant's `model`, a slug of the catalog table (or its label, for an agent);
+ * anything else is refused before a picture is uploaded. The tool's name or none (the recipe magnificsub_generate, an
+ * agent) reads the Model row instead (Auto when empty).
+ */
+function generateModel(req) {
+    const m = String(req.model || "").trim();
+    if (!m || m === GENERATE_TOOL) return T.pick(T.GENERATE_MODELS, (req.params || {}).model, "Auto", "model");
+    return T.pick(T.GENERATE_MODELS, m, null, "model");
+}
+
+/** The generate model of an edit: one that takes the crop as an "image" reference. */
+function editModel(req) {
+    const model = generateModel(req);
+    if (model.ref !== "image") throw new Error(`${LABEL}: ${model.label} takes pictures as style references only, so it cannot edit the crop; use Generate new.`);
+    return model;
 }
 
 /**
@@ -518,7 +589,7 @@ function generateModel(params) {
  * unnumbered.
  */
 function textLayout(req) {
-    const m = generateModel(req.params);
+    const m = generateModel(req);
     const refs = refRoles(req).map(([role, i]) => [role, `references[${i}]`, i]);
     if (m.ref === "style") return layoutOf({ own: refs, max: REFS_MAX, style: true });
     return layoutOf({ seq: refs, max: REFS_MAX });
@@ -544,8 +615,49 @@ function aspectFor(model, w, h) {
     return closestAspect(Math.max(1, +w || 1), Math.max(1, +h || 1), list.length ? list : ["1:1"]);
 }
 
+// |ln(answer aspect / crop aspect)| up to this: the answer is the crop's shape and is stretched onto it (as magnific.js)
+const FIT_SLACK = 0.03;
+
+/** "stretch" when w:h is within 3 % of the crop's W:H, else null (the stitch then centre-crops the answer). */
+function fitFor(w, h, W, H) {
+    if (!(w > 0 && h > 0 && W > 0 && H > 0)) return null;
+    return Math.abs(Math.log(w / h) - Math.log(W / H)) <= FIT_SLACK ? "stretch" : null;
+}
+
+/**
+ * An edit through images_generate (kind "edit"): the crop uploaded as it is and sent first in references[] as type
+ * "image", then the Original and the reference layers (at most 12 together), the instruction numbered by layout(); the
+ * aspect ratio the model's closest to the crop's. The answer goes back at its own size, `info.fit` "stretch" when it
+ * has the crop's shape (the renderer fits it into the box like any provider's answer, centre-cropping another shape).
+ */
+async function editGenerate(req, ctx) {
+    const model = editModel(req);
+    if (!req.image || !req.image.length) throw new Error(`${LABEL}: no picture to edit.`);
+    const text = String(req.prompt || "").trim();
+    if (!text) throw new Error(`${LABEL}: an edit needs a prompt.`);
+    const refs = (req.references || []).filter((b) => b && b.length);
+    if (refs.length + 1 > REFS_MAX) throw new Error(`${LABEL}: at most ${REFS_MAX} pictures go with an edit (the crop and ${REFS_MAX - 1} reference images); this run has ${refs.length + 1}.`);
+    const lay = layout({ ...req, references: refs, original: refs.length ? req.original : 0 });
+    // the crop's shape from the picture sent (its header), else from the request
+    const size = P.imageSize(req.image);
+    const [w, h] = size && size[0] > 0 && size[1] > 0 ? size : [+req.width, +req.height];
+    const args = { prompt: instruction({ ...req, kind: "edit" }, lay, text), mode: model.slug, aspectRatio: aspectFor(model, w, h), count: 1 };
+    const seed = seedFor(req.seed);
+    if (seed !== undefined) args.seed = seed;
+    const S = sessionOf(ctx);
+    const ids = [await S.upload(req.image, { fileName: "scumble.png" })];
+    for (let i = 0; i < refs.length; i++) ids.push(await S.upload(refs[i], { fileName: `scumble-ref-${i + 1}.png` }));
+    args.references = ids.map((identifier) => ({ type: "image", identifier }));
+    const file = await create(S, "images_generate", args, DEFAULT_WAIT_MS);
+    const out = answer(file, { model: model.slug, aspect: args.aspectRatio }, ctx);
+    const [aw, ah] = out.width ? [out.width, out.height] : args.aspectRatio.split(":").map(Number);
+    out.info.fit = fitFor(aw, ah, w, h);
+    if (seed !== undefined) { out.seed = req.seed; out.info.seed = seed; }
+    return out;
+}
+
 async function generate(req, ctx = {}) {
-    const model = generateModel(req.params);
+    const model = generateModel(req);
     const text = String(req.prompt || "").trim();
     if (!text) throw new Error(`${LABEL}: a new image needs a prompt.`);
     const refs = (req.references || []).filter((b) => b && b.length);
@@ -663,6 +775,9 @@ module.exports = {
     _isAuthError: isAuthError,
     _isTransportError: isTransportError,
     _upscaleArgs: upscaleArgs,
+    _upscaleMode: upscaleMode,
+    _generateModel: generateModel,
+    _fitFor: fitFor,
     _retouchArgs: retouchArgs,
     _aspectFor: aspectFor,
     _seedFor: seedFor,

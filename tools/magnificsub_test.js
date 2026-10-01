@@ -880,6 +880,109 @@ async function main() {
             check("refused before anything is sent: 13 references, no prompt, a model not on the list", /at most 12 reference images/.test(e1 || "") && /needs a prompt/.test(e2 || "") && /no model "Cinematic"/.test(e3 || "") && mock.calls.length === before.calls && mock.http.length === before.http, [e1, e2, e3].join(" | "));
         });
 
+        await section("20b. the variant names the model (the model recipes' magnificsub variants)", async () => {
+            // Generate new: the slug from the variant's model; a Model row no longer decides
+            let c0 = mock.calls.length;
+            await sub.generate({ kind: "text", model: "seedream-5-pro", prompt: "a lighthouse", width: 1920, height: 1080, references: [], params: { model: "Flux.2 Pro" } }, vctx);
+            const g = toolCalls(c0).find((x) => x.tool === "images_generate");
+            check("generate: the variant's model \"seedream-5-pro\" is the mode (a Model row is ignored), valid", g && g.args.mode === "seedream-5-pro" && g.args.aspectRatio === "16:9" && !invalid(c0).length, short(g && g.args));
+            const gm = (model, params) => sub._generateModel({ model, params }).slug;
+            check("the model: a slug or a label from the variant; the tool's name or none reads the Model row (Auto when empty)",
+                gm("flux-2") === "flux-2" && gm("Flux.2 Pro") === "flux-2" && gm("images_generate", { model: "GPT 2" }) === "gpt-2" && gm("", {}) === "auto" && gm(undefined, { model: "Mystic 2.5" }) === "mystic-2-5");
+
+            // an edit (kind "edit"): the crop first as an "image" reference, then the reference layers
+            const crop = codec.fromBitmap(greyOf(600, 400, (x, y) => (x + 2 * y) & 255));
+            const refs = [pngBytes(200, "EDREF-A"), pngBytes(200, "EDREF-B")];
+            c0 = mock.calls.length;
+            const out = await sub.edit({ kind: "edit", model: "flux-2", prompt: "the coat of image 2 on the man", image: crop, mask: crop, width: 600, height: 400, references: refs, original: 0, params: {}, seed: 11 }, vctx);
+            const e = toolCalls(c0).find((x) => x.tool === "images_generate");
+            const files = toolCalls(c0).filter((x) => x.tool === "creations_finalize_upload").map((x) => x.args.fileName);
+            const ids = (e && e.args.references || []).map((x) => x.identifier);
+            check("edit: three uploads (the crop, then the references), images_generate, the wait and the download, every call valid",
+                eq(toolsOf(c0), ["creations_request_upload", "creations_finalize_upload", "creations_request_upload", "creations_finalize_upload", "creations_request_upload", "creations_finalize_upload", "images_generate", "creations_wait", "creations_register_download"])
+                && eq(files, ["scumble.png", "scumble-ref-1.png", "scumble-ref-2.png"]) && !invalid(c0).length, short(toolsOf(c0)));
+            check("... references: the crop first, byte for byte as given, then the two layers, all type \"image\"; the mask is not sent",
+                e && e.args.references.length === 3 && e.args.references.every((x) => x.type === "image" && eq(Object.keys(x), ["type", "identifier"]))
+                && Buffer.compare(mock.creations.get(ids[0]).bytes, crop) === 0 && ids.slice(1).every((id, i) => mock.creations.get(id).bytes.toString("latin1", 33, 40) === ["EDREF-A", "EDREF-B"][i]), short(e && e.args.references));
+            check("... the instruction names the crop image 1 and the layers images 2 and 3; mode, the aspect nearest the crop (600 x 400: 3:2), count 1, the seed",
+                e && e.args.prompt === "Edit image 1 and keep its size and framing. the coat of image 2 on the man Images 2 and 3 are reference images." && e.args.mode === "flux-2" && e.args.aspectRatio === "3:2" && e.args.count === 1 && e.args.seed === 11, short(e && e.args));
+            check("... the answer at its own size (64 x 48, another shape: not stretched), the credits, the model and the aspect",
+                out.width === 64 && out.height === 48 && out.bytes.toString("latin1", 33, 39) === "RESULT" && eq(out.info, { credits: 90, model: "flux-2", aspect: "3:2", fit: null, seed: 11 }) && out.seed === 11, short(out.info));
+
+            // the answer in the crop's shape at another size: back as it came, marked to be stretched onto the box
+            const big = codec.fromBitmap(greyOf(1536, 1024, (x) => x & 255));
+            mock.script.result = big;
+            let o2;
+            c0 = mock.calls.length;
+            try { o2 = await sub.edit({ kind: "edit", model: "seedream-5-pro", prompt: "make it night", image: crop, mask: crop, width: 600, height: 400, references: [], params: {} }, vctx); } finally { mock.script.result = null; }
+            const e2 = toolCalls(c0).find((x) => x.tool === "images_generate");
+            check("an edit without reference layers: the crop alone in references; an answer of 1536 x 1024 goes back unchanged with fit \"stretch\"",
+                e2 && e2.args.references.length === 1 && e2.args.prompt === "Edit image 1 and keep its size and framing. make it night" && e2.args.aspectRatio === "3:2"
+                && Buffer.compare(o2.bytes, big) === 0 && o2.width === 1536 && o2.height === 1024 && o2.info.fit === "stretch" && !("seed" in o2.info), short(o2.info));
+            const f = sub._fitFor;
+            check("fit: within 3 % of the crop's shape stretched, else none", f(1536, 1024, 600, 400) === "stretch" && f(1024, 1024, 600, 400) === null && f(1000, 1010, 1, 1) === "stretch" && f(0, 1, 1, 1) === null);
+
+            // the Original: references[0], named after the crop
+            c0 = mock.calls.length;
+            await sub.edit({ kind: "edit", model: "imagen-nano-banana-2", prompt: "fill it", image: crop, mask: crop, width: 600, height: 400, references: [pngBytes(200, "ORIGINAL"), pngBytes(200, "EDREF-C")], original: 1, params: {} }, vctx);
+            const e3 = toolCalls(c0).find((x) => x.tool === "images_generate");
+            check("with Original on: the crop, the Original, the layer; the instruction says what the Original is",
+                e3 && e3.args.references.length === 3 && mock.creations.get(e3.args.references[1].identifier).bytes.toString("latin1", 33, 41) === "ORIGINAL"
+                && e3.args.prompt === "Edit image 1 and keep its size and framing. fill it Image 2 is image 1 before the selected area was filled. Image 3 is a reference image." && !invalid(c0).length, short(e3 && e3.args.prompt));
+
+            // the layout of an edit: the crop and up to 11 layers, numbered 1..12, capped at 12; no mask
+            const lay = sub.layout({ kind: "edit", model: "gpt-2", references: Array.from({ length: 11 }, () => Buffer.from([1])), original: 0 });
+            check("the edit layout: references[0] the crop, then the layers, numbered 1 to 12, max 12, no mask, nothing dropped",
+                lay.pictures.length === 12 && lay.pictures[0].role === "crop" && lay.pictures[0].field === "references[0]" && eq(lay.pictures.map((x) => x.n), [...Array(12).keys()].map((i) => i + 1))
+                && lay.pictures[11].field === "references[11]" && lay.pictures[11].ref === 10 && lay.max === 12 && !lay.drops && !lay.style && !lay.pictures.some((x) => x.role === "mask"), short(lay));
+
+            // refused before anything is sent
+            const before = { calls: mock.calls.length, http: mock.http.length };
+            const r = (req) => throws(() => sub.edit({ kind: "edit", image: crop, mask: crop, width: 600, height: 400, references: [], params: {}, prompt: "x", ...req }, vctx));
+            const errs = [
+                await r({ model: "seedream-4" }),
+                await throws(() => sub.generate({ kind: "text", model: "seedream-4", prompt: "x", references: [], params: {} }, vctx)),
+                await r({ model: "flux-2", references: Array.from({ length: 12 }, () => pngBytes(100, "R")) }),
+                await r({ model: "mystic-2-5" }),
+                await r({ model: "flux-2", prompt: "  " }),
+                await r({ model: "flux-2", kind: "fill" }),
+                await r({ model: "images_retouch" }),
+            ];
+            check("refused before any upload: a slug not in the table (edit and generate), the crop and 12 layers, a style-only model, no prompt, a generate model as a fill, the retouch as an edit",
+                /no model "seedream-4"/.test(errs[0] || "") && /no model "seedream-4"/.test(errs[1] || "") && /at most 12 pictures go with an edit \(the crop and 11 reference images\); this run has 13/.test(errs[2] || "")
+                && /Mystic 2\.5 takes pictures as style references only, so it cannot edit the crop/.test(errs[3] || "") && /an edit needs a prompt/.test(errs[4] || "")
+                && /flux-2 edits with the crop and a prompt, not with a mask; the variant's input must be edit/.test(errs[5] || "") && /needs the selection as a mask/.test(errs[6] || "")
+                && mock.calls.length === before.calls && mock.http.length === before.http, errs.join(" | "));
+            const le = [() => sub.layout({ kind: "edit", model: "recraft-v4-1", references: [], original: 0 }), () => sub.layout({ kind: "edit", model: "nope", references: [], original: 0 }), () => sub.textLayout({ kind: "text", model: "nope", references: [Buffer.from([1])], original: 0 })]
+                .map((fn) => { try { fn(); return null; } catch (err) { return err.message; } });
+            check("the layouts refuse them too (a style-only model's edit, an unknown slug)", /cannot edit the crop/.test(le[0] || "") && /no model "nope"/.test(le[1] || "") && /no model "nope"/.test(le[2] || ""), le.join(" | "));
+
+            // the upscalers of magnific_creative and magnific_precision: model "creative", or "precision" with a Mode row
+            const U = (model, params, factor = 2) => sub._upscaleArgs({ model, factor, prompt: "p", params });
+            check("upscale: \"creative\" sends what \"images_upscale:creative\" sends",
+                eq(U("creative", {}), U("images_upscale:creative", {})) && eq(U("creative", { preset: "Wild", engine: "Sharpy" }, 8), { mode: "creative", scale: "8x", presets: "wild", optimised: "StandardUltra", engine: "magnific_sharpy", prompt: "p" }), short(U("creative", {})));
+            check("upscale: \"precision\" takes its mode from the Mode row (sublime when empty), as \"images_upscale:precision\" did",
+                eq(U("precision", {}), { mode: "ultra-sublime", scale: "2x" }) && eq(U("precision", { mode: "Precision photo", sharpness: 3 }), { mode: "ultra-photo", scale: "2x", sharpness: 3 })
+                && eq(U("precision", { mode: "ultra-denoiser" }), U("images_upscale:precision", { mode: "ultra-denoiser" })) && eq(U("precision", { mode: "Precision v1", precisionPreset: "Balanced" }), { mode: "ultra", scale: "2x", precisionPreset: "balanced" }));
+            check("upscale: a mode's slug as the model is the default, a Mode row of the same kind overrides it",
+                U("ultra-photo", {}).mode === "ultra-photo" && U("ultra-photo", { mode: "Precision sublime" }, 4).mode === "ultra-sublime" && sub._upscaleMode({ model: "ultra-photo" }).kind === "precision");
+            const ue = [
+                await throws(() => sub.upscale({ model: "precision", image: pngBytes(100, "X"), factor: 2, params: { mode: "Creative" } }, vctx)),
+                await throws(() => sub.upscale({ model: "creative", image: pngBytes(100, "X"), factor: 2, params: { mode: "Precision photo" } }, vctx)),
+                await throws(() => sub.upscale({ model: "precision", image: pngBytes(100, "X"), factor: 4, params: { mode: "Precision photo" } }, vctx)),
+                await throws(() => sub.upscale({ model: "turbo", image: pngBytes(100, "X"), factor: 2, params: {} }, vctx)),
+                await throws(() => sub.upscale({ model: "creative", image: pngBytes(100, "X"), factor: 2, params: { preset: "Custom (sliders)", hdr: 11 } }, vctx)),
+            ];
+            check("upscale refusals before the upload: the other kind's mode (both ways), a factor the mode does not take, an unknown model, a slider out of range",
+                /Creative is not a Precision mode/.test(ue[0] || "") && /Precision photo is not a Creative mode/.test(ue[1] || "") && ue[2] === "Magnific (subscription): Precision photo upscales by 2x only, not 4x."
+                && /no upscale mode "turbo"/.test(ue[3] || "") && /hdr goes from -10 to 10, not 11/.test(ue[4] || "") && mock.calls.length === before.calls && mock.http.length === before.http, ue.join(" | "));
+            c0 = mock.calls.length;
+            const up = await sub.upscale({ kind: "upscale", model: "precision", image: pngBytes(300, "UP-PREC"), factor: 16, params: { mode: "Precision sublime", precisionPreset: "Portraits" } }, vctx);
+            const ua = toolCalls(c0).find((x) => x.tool === "images_upscale");
+            check("an upscale with model \"precision\" runs: images_upscale {mode ultra-sublime, 16x, the macro}, valid",
+                ua && eq({ ...ua.args, creationIdentifier: null }, { creationIdentifier: null, mode: "ultra-sublime", scale: "16x", precisionPreset: "portraits" }) && !invalid(c0).length && eq(up.info, { credits: 90, model: "ultra-sublime", factor: "16x" }), short(ua && ua.args));
+        });
+
         await section("21. the curated lists against the catalogs", async () => {
             const read = (n) => fs.readFileSync(path.join(__dirname, "refs", "magnificsub", n), "utf8");
             const entries = (text) => text.split(/\n  - slug: /).slice(1).map((b) => {
@@ -988,6 +1091,13 @@ async function main() {
                 await index.edit({ provider: "magnificsub", kind: "upscale", model: "images_upscale", factor: 4, image: pic, references: [], params: {} });
                 check("... an upscale reaches upscale with its factor", seen[2] && seen[2][0] === "upscale" && seen[2][1].factor === 4);
                 check("... and balance() reaches the adapter", await index.balance("magnificsub") === "1 credits");
+                const r3 = await index.edit({ provider: "magnificsub", kind: "edit", model: "seedream-5-pro", prompt: "the coat of {@ref:0}", image: pic, mask: pic, width: 80, height: 80, references: [new Uint8Array(pngBytes(80, "A"))], params: {} });
+                check("... an edit with a generate model's slug reaches edit with its reference; the marker becomes \"image 2\" (the crop is image 1), nothing dropped",
+                    seen[3] && seen[3][0] === "edit" && seen[3][1].model === "seedream-5-pro" && seen[3][1].references.length === 1 && seen[3][1].prompt === "the coat of image 2" && eq(r3.refs, [{ ref: 0, name: "image 2" }]) && !r3.notes.length, short(seen[3] && seen[3][1].prompt));
+                const e5 = await throws(() => index.edit({ provider: "magnificsub", kind: "edit", model: "mystic-2-5", prompt: "x", image: pic, mask: pic, references: [], params: {} }));
+                check("... an edit with a style-only model is refused before the adapter", /cannot edit the crop/.test(e5 || "") && seen.length === 4, e5);
+                const pvEdit = index.layout({ provider: "magnificsub", kind: "edit", model: "flux-2", count: 2, params: {} });
+                check("the preview layout of an edit: the two layers are image 2 and image 3", eq(pvEdit.names, ["image 2", "image 3"]), short(pvEdit.names));
                 const pv = index.layout({ provider: "magnificsub", kind: "text", count: 3, params: { model: "Auto" } });
                 const pvStyle = index.layout({ provider: "magnificsub", kind: "text", count: 2, params: { model: "Recraft V4.1" } });
                 check("the preview layout: Auto names image 1-3, Recraft V4.1 none (style references)", eq(pv.names, ["image 1", "image 2", "image 3"]) && eq(pvStyle.names, [null, null]), short([pv.names, pvStyle.names]));
