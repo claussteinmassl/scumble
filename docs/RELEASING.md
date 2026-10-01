@@ -19,8 +19,12 @@ profile (`bash tools/run_gates.sh <label> --offline --exe dist/win-unpacked/Scum
 tests `CSC_LINK` and `APPLE_ID`). Without them a tag build leaves an unsigned workflow artifact and the release has no
 mac files, because Gatekeeper blocks an unsigned download. The secrets and the local route (`npm run dist:mac` with a
 Developer ID Application certificate in the keychain and `APPLE_KEYCHAIN_PROFILE`) are in
-`docs/CODE_SIGNING_POLICY.md`; a mac build made locally can be checked with `spctl -a -vv -t exec` and
-`xcrun stapler validate`, and gated with
+`docs/CODE_SIGNING_POLICY.md`. The app is notarized and stapled by electron-builder, the dmg by the
+`afterAllArtifactBuild` hook `build/notarize-dmg.js` (it skips without credentials), so the job builds with
+`--publish never` and uploads the finished files with `gh release upload`. Trap: build the mac release outside a
+cloud-synced folder (Dropbox and iCloud turn the framework symlinks in Electron.app into files and `codesign --verify`
+then fails with "bundle format unrecognized"): `-c.directories.output=<path>` works. A mac build made locally can be
+checked with `spctl -a -vv -t exec` on the app, `xcrun stapler validate` on the dmg, and gated with
 `bash tools/run_gates.sh <label> --offline --exe dist/mac-arm64/Scumble.app --tiles on|off <gates>` (needs
 `gtimeout` from coreutils when there is no `timeout`). The macOS app does not update itself (the updater is off),
 so the release notes are all a Mac user sees of a new version.

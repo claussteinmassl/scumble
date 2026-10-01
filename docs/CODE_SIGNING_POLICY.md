@@ -63,7 +63,19 @@ binaries.
 `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID` are set. The first time, `codesign` may ask for access to the
 certificate's key in the keychain; answer *Always Allow* once. Check the result with
 `codesign --verify --deep --strict dist/mac-arm64/Scumble.app`,
-`spctl -a -vv -t exec dist/mac-arm64/Scumble.app` and `xcrun stapler validate` on the dmg.
+`spctl -a -vv -t exec dist/mac-arm64/Scumble.app`, `xcrun stapler validate` on the dmg and
+`spctl -a -vv -t open --context context:primary-signature` on the dmg.
+
+**The dmg.** electron-builder notarizes and staples the app but not the dmg. `build.dmg.sign` makes it sign the dmg, and
+the `afterAllArtifactBuild` hook `build/notarize-dmg.js` (build-time only, in no `files` list) then submits every dmg
+with `xcrun notarytool submit --wait` and staples it, using the same credentials as above (`APPLE_KEYCHAIN_PROFILE`
+[+ `APPLE_KEYCHAIN`], or the Apple ID trio, or `APPLE_API_KEY` + `APPLE_API_KEY_ID` + `APPLE_API_ISSUER`) (the dmg's checksum in
+`latest-mac.yml` is stale afterwards; the macOS updater is off and reads only the zip). Without credentials, or on a Windows or Linux build, it says so and does
+nothing. Two notarizations make a local build take several minutes.
+
+**Build outside a cloud-synced folder.** Dropbox and iCloud file providers turn the symlinks in the Electron frameworks
+into plain files, and electron-builder's own `codesign --verify` then fails with "bundle format unrecognized". Point
+the output elsewhere: `npm run dist:mac -- -c.directories.output=$HOME/Library/Caches/scumble-dist`.
 
 **In CI.** The job needs five repository secrets:
 
@@ -78,8 +90,9 @@ certificate's key in the keychain; answer *Always Allow* once. Check the result 
 **Without the secrets** (forks, pull requests, a repository that has no Apple account) the job builds an **unsigned**
 dmg and zip with `CSC_IDENTITY_AUTO_DISCOVERY=false` and keeps them as the workflow artifact `Scumble-macos`; nothing is
 attached to a release. The job treats the secrets as present when `CSC_LINK` and `APPLE_ID` are both set (`HAS_SIGNING`
-in the workflow). **With them**, it signs and notarizes, and on a `v<version>` tag it also publishes the dmg, the zip
-and `latest-mac.yml` to the draft release the `draft` job made. The Windows and Linux jobs do not depend on any of this.
+in the workflow). **With them**, it signs and notarizes the app and the dmg (the hook above), and on a `v<version>` tag it also uploads the dmg,
+the zip and `latest-mac.yml` to the draft release the `draft` job made (`gh release upload`, after the build, so the dmg is
+the notarized one). The Windows and Linux jobs do not depend on any of this.
 
 **Updates.** The macOS app does not update itself: the updater is off there and Settings › Updates says that new
 versions are downloaded from GitHub Releases. `latest-mac.yml` is published only by signed tag builds, so turning the updater

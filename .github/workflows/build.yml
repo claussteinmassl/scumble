@@ -172,8 +172,12 @@ jobs:
         shell: bash
         run: |
           if [ "$HAS_SIGNING" != "true" ]; then export CSC_IDENTITY_AUTO_DISCOVERY=false; unset CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; fi
-          if [[ "$GITHUB_REF" == refs/tags/v* && "$HAS_SIGNING" == "true" ]]; then npx electron-builder --mac --arm64 --publish always
-          else npx electron-builder --mac --arm64 --publish never; fi
+          # always --publish never: electron-builder uploads a file the moment it is built, which is before
+          # build/notarize-dmg.js has notarized and stapled the dmg; the upload below takes the finished files
+          npx electron-builder --mac --arm64 --publish never
+          if [[ "$GITHUB_REF" == refs/tags/v* && "$HAS_SIGNING" == "true" ]]; then
+            gh release upload "${GITHUB_REF#refs/tags/}" dist/Scumble-*-arm64.dmg dist/Scumble-*-arm64.zip dist/latest-mac.yml --clobber
+          fi
 
       - uses: actions/upload-artifact@v4
         if: "!startsWith(github.ref, 'refs/tags/v') || env.HAS_SIGNING != 'true'"

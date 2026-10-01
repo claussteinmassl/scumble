@@ -194,8 +194,10 @@
       ]
     },
     "dmg": {
-      "artifactName": "Scumble-${version}-${arch}.${ext}"
+      "artifactName": "Scumble-${version}-${arch}.${ext}",
+      "sign": true
     },
+    "afterAllArtifactBuild": "build/notarize-dmg.js",
     "asarUnpack": [
       "node_modules/onnxruntime-node/bin/**"
     ]
