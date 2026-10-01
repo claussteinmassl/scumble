@@ -125,9 +125,19 @@ lets a subscriber run Magnific from Scumble without an API plan.
 
 Built on the branch `magnific-subscription` in four tasks: the sign-in and the MCP session with a mock (Task 1), the
 verbs, the registry hook and the recipes (Task 2, with a fix round), the Settings row, the IPC, the cutout backend
-and the gate (Task 3), and the docs (Task 4). **The live run is still to come** (one upscale, one retouch, one
-generate, one cutout on a small picture, with the user's account, the cost estimated with `simulate_cost` first); no
-run has touched Magnific's service.
+and the gate (Task 3), and the docs (Task 4), then a live run with the user's account (Task 5).
+
+### The live run (2026-10-01, a Premium+ plan, macOS)
+- The sign-in through the Settings row worked; the browser comes to the front and Scumble comes back after it
+  (checked by the user after the fix below).
+- Upscale, Creative 2x, 320 x 240 -> 640 x 480 in 23 s: 90 credits. Retouch (replace, Auto), a 512 x 512 crop: 19 s,
+  10 credits. Cutout of the retouch layer: 8 s, 3 credits. Generate new (Auto, 1:1): 1536 x 1536 in 41 s, 75 credits.
+- Two faults only the real service showed, both fixed and tested against the mock since:
+  `creations_register_download` names an original only for a creation whose `url` is a re-encode (an upscale), so a
+  generated picture is fetched from the finished creation's `results.url`; and a model behind Auto (Seedream 5 Pro)
+  refuses seeds above 2147483647, so a larger Scumble seed is sent as `seed % 2147483648`. The first, failed generate
+  still cost 75 credits (the picture stayed in the Magnific library).
+- In all 253 credits of the plan were spent on the run.
 
 ### What was built, as designed
 - `magnificsub_auth.js` (OAuth with PKCE and dynamic registration, the loopback redirect, the host rule, a sign-in that
