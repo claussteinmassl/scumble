@@ -391,7 +391,7 @@ function authStatus(id) {
 }
 
 /** Signs in through the browser (`openExternal(url)`, main's shell.openExternal); resolves to authStatus(). */
-async function signIn(id, { openExternal, version } = {}) {
+async function signIn(id, { openExternal, version, onSignedIn } = {}) {
     const p = oauthProvider(id);
     id = String(id);
     if (pendingSignIns.has(id)) throw new Error(`${p.label}: a sign-in is already waiting for the browser.`);
@@ -410,6 +410,10 @@ async function signIn(id, { openExternal, version } = {}) {
     }
     // a cached session holds the old client and tokens
     if (typeof p.resetSession === "function") await p.resetSession();
+    // the browser had the front: give it back to the app (main.js), only after a real sign-in, never a test one
+    if (!test && typeof onSignedIn === "function") {
+        try { onSignedIn(); } catch (err) { log.record({ level: "warn", source: id, message: `${p.label}: could not bring the window to the front: ${err && err.message || err}` }); }
+    }
     return authStatus(id);
 }
 

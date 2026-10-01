@@ -984,7 +984,8 @@ async function main() {
 
             // a test sign-in: no browser opens (openExternal is never called), the URL waits in authStatus for the test
             const opened = [];
-            const run = index.signIn("magnificsub", { openExternal: async (u) => { opened.push(u); } });
+            let fronted = 0;
+            const run = index.signIn("magnificsub", { openExternal: async (u) => { opened.push(u); }, onSignedIn: () => { fronted++; } });
             const pend = await waitFor(() => { const s = index.authStatus("magnificsub"); return s.url ? s : null; });
             check("while it waits: pending, with the mock's authorization URL", !!pend && pend.pending === true && pend.signedIn === false && pend.url.startsWith(mock.base + "/realm/auth?"), short(pend));
             const e1 = await throws(() => index.signIn("magnificsub", { openExternal: async () => {} }));
@@ -994,6 +995,22 @@ async function main() {
             remember(store);
             check("following the URL signs in; openExternal was never called", eq(st, { signedIn: true, account: "Mock Plan" }) && opened.length === 0 && eq(index.authStatus("magnificsub"), { signedIn: true, account: "Mock Plan" }), short(st));
             check("describeAll: the row reads signed in", index.describeAll().find((x) => x.id === "magnificsub").signedIn === true);
+            check("a test sign-in does not bring the window to the front (onSignedIn is for a real one)", fronted === 0);
+            {
+                // a real sign-in, the adapter played: onSignedIn once after it went through, never after a failure
+                const P = index.PROVIDERS.magnificsub;
+                const keep = { signIn: P.signIn, isTest: P.isTest };
+                const urls = [];
+                let n = 0, fail = false;
+                P.isTest = () => false;
+                P.signIn = async (c) => { await c.openExternal("https://auth.magnific.com/realms/mcp/auth?x=1"); if (fail) throw new Error("cancelled"); };
+                try {
+                    await index.signIn("magnificsub", { openExternal: async (u) => { urls.push(u); }, onSignedIn: () => { n++; } });
+                    fail = true;
+                    const ef = await throws(() => index.signIn("magnificsub", { openExternal: async (u) => { urls.push(u); }, onSignedIn: () => { n++; } }));
+                    check("a real sign-in opens the browser and calls onSignedIn once it went through; a failed one does not", urls.length === 2 && n === 1 && ef === "cancelled", `${urls.length} opened, ${n} fronted, ${ef}`);
+                } finally { P.signIn = keep.signIn; P.isTest = keep.isTest; }
+            }
 
             // the cutout through index.js (the editor's backend): a grey PNG (white = keep), with the credits, logged
             mock.script.result = codec.fromBitmap({ width: 2, height: 1, data: Buffer.from([1, 2, 3, 0, 1, 2, 3, 255]) });

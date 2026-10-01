@@ -453,6 +453,19 @@ function showWindow() {
     win.focus();
 }
 
+/**
+ * The window back in front after a sign-in in the browser (Settings › API providers): on macOS the app takes the
+ * focus from the browser (steal), then the window is shown, restored and focused on every platform. A headless
+ * instance stays hidden.
+ */
+function frontAfterSignIn() {
+    if (headless || !win || win.isDestroyed()) return;
+    if (process.platform === "darwin") app.focus({ steal: true });
+    win.show();
+    if (win.isMinimized()) win.restore();
+    win.focus();
+}
+
 function windowVisible() {
     return !!(win && !win.isDestroyed() && win.isVisible());
 }
@@ -971,7 +984,9 @@ function installIpc() {
     // a provider that signs in instead of taking a key (Magnific (subscription)): the Settings row's buttons; a test
     // sign-in against the loopback mock opens no browser (providers/index.js signIn)
     ipcMain.handle("providers:status", (_e, id) => providers.authStatus(id));
-    ipcMain.handle("providers:signIn", (_e, id) => providers.signIn(id, { openExternal: (url) => shell.openExternal(url), version: app.getVersion() }));
+    // activate: the browser comes to the front with the sign-in page (macOS; the default, said explicitly), and the
+    // window comes back after a sign-in that went through
+    ipcMain.handle("providers:signIn", (_e, id) => providers.signIn(id, { openExternal: (url) => shell.openExternal(url, { activate: true }), version: app.getVersion(), onSignedIn: frontAfterSignIn }));
     ipcMain.handle("providers:cancelSignIn", (_e, id) => providers.cancelSignIn(id));
     ipcMain.handle("providers:signOut", (_e, id) => providers.signOut(id));
     // a provider's background removal (the editor's cutout backend "Magnific (subscription)")
