@@ -490,6 +490,108 @@ async function main() {
             check("a TypeError of the code is not (it is never retried as a dropped connection)", !sub._isTransportError(bug) && !sub._isTransportError(notFn));
         });
 
+        await section("14b. hardening: a dropped connection never sends a paid tool twice (Session.call)", async () => {
+            const k = fakeKeys();
+            await auth.signIn({ keys: k, settings, openExternal: browser(), fetch: rec });
+            remember(k);
+            const S = new sub.Session({ keys: k, settings, fetch: rec, sleep: fakeSleep });
+            const id = await S.upload(pngBytes(300, "DROP"));
+
+            let c0 = mock.calls.length;
+            mock.script.drop.push("images_upscale");
+            const e = await throws(() => S.call("images_upscale", { creationIdentifier: id, mode: "creative", scale: "2x" }));
+            const ups = toolCalls(c0).filter((c) => c.tool === "images_upscale");
+            check("a paid tool (images_upscale) whose connection broke went out exactly once (the mock's call log)",
+                ups.length === 1 && ups[0].dropped === true && mock.script.drop.length === 0, short(toolCalls(c0)));
+            check("... and the error says it may still run and be charged", /the connection broke during images_upscale; it may still run and be charged \(check your Magnific library\)/.test(e || ""), e);
+            const bal = await S.call("account_balance", {});
+            check("... the next call reconnects and runs", bal && bal.credits && bal.credits.available === 1000, short(bal));
+
+            const job = await S.call("images_remove_background", { creationIdentifier: id });
+            c0 = mock.calls.length;
+            const h0 = mock.http.length;
+            mock.script.drop.push("creations_wait");
+            const w = await S.waitFor(job.creation.identifier);
+            const waits = toolCalls(c0).filter((c) => c.tool === "creations_wait");
+            check("a read-only tool (creations_wait) whose connection broke is sent once more after a reconnect, and succeeds",
+                waits.length === 2 && waits[0].dropped === true && !waits[1].dropped && !waits[1].error && w && w.status === "completed", short(waits));
+            const inits = mock.http.slice(h0).filter((h) => h.method === "POST" && h.path === "/").length;
+            check("... over a new connection (initialize, its notification, the call again)", inits === 1 + 2 + 1, `${inits} POSTs`);
+
+            c0 = mock.calls.length;
+            mock.script.drop.push("creations_wait", "creations_wait");
+            const e2 = await throws(() => S.waitFor(job.creation.identifier));
+            check("a read that breaks twice is sent twice, not more, and fails", toolCalls(c0).filter((c) => c.tool === "creations_wait").length === 2 && /Magnific creations_wait/.test(e2 || ""), e2);
+            mock.script.drop.length = 0;
+            await S.close();
+        });
+
+        await section("14c. hardening: upload and download redirects, the download's size cap", async () => {
+            const k = fakeKeys();
+            await auth.signIn({ keys: k, settings, openExternal: browser(), fetch: rec });
+            remember(k);
+            const S = new sub.Session({ keys: k, settings, fetch: rec, sleep: fakeSleep });
+            const bytes = pngBytes(400, "REDIR");
+
+            // the upload: a 302 is refused (it would turn the PUT into a GET); a 307 to the mock itself is followed
+            let c0 = mock.calls.length;
+            mock.script.putRedirect = { status: 302, to: "self" };
+            let e = await throws(() => S.upload(bytes));
+            check("an upload answered 302 is refused, not retried, and not finalized", /the upload was redirected \(302\); refused/.test(e || "") && !toolCalls(c0).some((c) => c.tool === "creations_finalize_upload"), e);
+            mock.script.putRedirect = { status: 307, to: "http://example.com/put" };
+            const r0 = rec.log.length;
+            c0 = mock.calls.length;
+            e = await throws(() => S.upload(bytes));
+            check("an upload redirected (307) off the allowed host is refused before it is followed", /refused the upload URL at http:\/\/example\.com/.test(e || "") && !rec.log.slice(r0).some((r) => r.url.includes("example.com")) && !toolCalls(c0).some((c) => c.tool === "creations_finalize_upload"), e);
+            mock.script.putRedirect = { status: 307, to: "self" };
+            const h0 = mock.http.length;
+            const id = await S.upload(bytes);
+            const puts = mock.http.slice(h0).filter((h) => h.method === "PUT").length;
+            check("an upload redirected (307) to an allowed URL is followed with its body", puts === 2 && Buffer.compare(mock.creations.get(id).bytes, bytes) === 0, `${puts} PUTs`);
+
+            // the download
+            mock.script.getRedirect = { status: 302, to: "http://example.com/x.png" };
+            const r1 = rec.log.length;
+            e = await throws(() => S.download(id));
+            check("a download redirected off the allowed host is refused, not fetched", /refused the download URL at http:\/\/example\.com/.test(e || "") && !rec.log.slice(r1).some((r) => r.url.includes("example.com")), e);
+            mock.script.getRedirect = { status: 302, to: "self" };
+            const back = await S.download(id);
+            check("a download redirected to an allowed URL is followed", Buffer.compare(back.bytes, bytes) === 0);
+            mock.script.getRedirect = { status: 302, to: "self", times: 10 };
+            e = await throws(() => S.download(id));
+            mock.script.getRedirect = null;
+            check("more than 5 redirects are refused", /redirected more than 5 times; refused/.test(e || ""), e);
+
+            // outside a test, a public https URL that redirects to a local host is refused before it is followed
+            const asked = [];
+            const real = new sub.Session({ keys: fakeKeys(), settings: {}, fetch: async (u, init) => { asked.push([String(u), init && init.redirect]); return new Response(null, { status: 302, headers: { location: "https://127.0.0.1/x.png" } }); } });
+            e = await throws(() => real.plainFetch("https://cdn.magnific.com/a.png", { method: "GET" }, "download"));
+            check("outside a test: a redirect from a public host to 127.0.0.1 is refused, asked with redirect: manual", /refused the download URL at https:\/\/127\.0\.0\.1/.test(e || "") && eq(asked, [["https://cdn.magnific.com/a.png", "manual"]]), e);
+
+            // the size cap: by Content-Length, and while the body streams without one
+            const job = await S.call("images_remove_background", { creationIdentifier: id });
+            await S.waitFor(job.creation.identifier);
+            mock.script.result = Buffer.alloc(5000, 7);
+            const small = new sub.Session({ keys: k, settings, fetch: rec, sleep: fakeSleep, maxDownload: 4000 });
+            e = await throws(() => small.download(job.creation.identifier));
+            check("a download larger than the cap (by its Content-Length) is aborted", /larger than \d+ MB; aborted/.test(e || ""), e);
+            const ok = await new sub.Session({ keys: k, settings, fetch: rec, sleep: fakeSleep, maxDownload: 5000 }).download(job.creation.identifier);
+            check("... one at the cap goes through", ok.bytes.length === 5000);
+            let cancelled = false;
+            const streaming = async (u, init) => {
+                if (!String(u).includes("/asset/")) return rec(u, init);
+                let n = 0;
+                const body = new ReadableStream({ pull(c) { if (n++ < 10) c.enqueue(new Uint8Array(1000)); else c.close(); }, cancel() { cancelled = true; } });
+                return new Response(body, { status: 200, headers: { "content-type": "image/png" } });
+            };
+            const S3 = new sub.Session({ keys: k, settings, fetch: streaming, sleep: fakeSleep, maxDownload: 4000 });
+            e = await throws(() => S3.download(job.creation.identifier));
+            check("a body without Content-Length is aborted once it passes the cap (the stream cancelled)", /larger than \d+ MB; aborted/.test(e || "") && cancelled, e);
+            check("the default cap is 200 MB", sub.MAX_DOWNLOAD === 200 * 1000 * 1000);
+            mock.script.result = null;
+            for (const x of [S, small, S3]) await x.close();
+        });
+
         await section("15. hardening: a re-sign-in keeps the old sign-in until it succeeds", async () => {
             const k = fakeKeys();
             await auth.signIn({ keys: k, settings, openExternal: browser(), fetch: rec });

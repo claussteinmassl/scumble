@@ -2154,12 +2154,14 @@ row (the other rows keep their seven fields). IPC: `providers:status|signIn|canc
 **Not in this step.** Outpainting (`images_expand` takes fixed aspect ratios, not margins per side), video, audio,
 3D, stock, a run-time model catalog, an estimate or a confirmation before a run. The server has 187 tools; the adapter uses nine of them, and their schemas are in `tools/refs/magnificsub/`.
 
-**Tests.** `node tools/magnificsub_test.js` (plain Node, 154 checks: the sign-in against the mock's OAuth realm, the
+**Tests.** `node tools/magnificsub_test.js` (plain Node, 171 checks: the sign-in against the mock's OAuth realm, the
 session, every verb's arguments against the copied schemas, the upload and its retries, the wait, the host rule, the
-retouch geometry, the registry hook, index.js's sign-in and cutout) against `tools/magnificsub_mock.js`
+retouch geometry, the registry hook, index.js's sign-in and cutout, a dropped connection (a paid tool is sent once and
+fails with "may still run and be charged", a read is sent once more), upload and download redirects (each target
+checked again, a PUT follows 307 / 308 only, at most 5 hops) and the download's 200 MB cap) against `tools/magnificsub_mock.js`
 (`node tools/magnificsub_mock.js --port N`, or `--app` for decodable pictures and `GET /__mock/calls`; scripted
 triggers: a prompt or file name `mock-failed`, `mock-slow`, upload bytes `mock-put-503`, and the `script` object for
-401s, expiry, a failing refresh, credits and results). The gate `magnificsub` (`tools/magnificsub_test.py`) runs it
+401s, expiry, a failing refresh, credits, results, a dropped connection per tool and redirects). The gate `magnificsub` (`tools/magnificsub_test.py`) runs it
 first, then the app with `settings.magnificsub.base` on the mock: the row signed out, in and out again, the four
 recipes' "(not signed in)" labels, one run of each verb through the window with the credits in the status line,
 and the cutout list. Run it with `bash tools/run_gates.sh <label> --offline --tiles on magnificsub`. With the base on

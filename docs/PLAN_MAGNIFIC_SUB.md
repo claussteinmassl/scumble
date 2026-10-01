@@ -152,8 +152,11 @@ run has touched Magnific's service.
   `magnificsub_pictures.js`. A creation tool that loses its connection is not sent again (no double charge).
 
 ### Tests that exist
-- `node tools/magnificsub_test.js` (plain Node, 154 checks) against `tools/magnificsub_mock.js`: sign-in, session,
-  every verb's arguments against the copied schemas, upload retries, wait, host rule, retouch geometry, registry hook.
+- `node tools/magnificsub_test.js` (plain Node, 171 checks) against `tools/magnificsub_mock.js`: sign-in, session,
+  every verb's arguments against the copied schemas, upload retries, wait, host rule, retouch geometry, registry hook,
+  a dropped connection (a paid tool sent once, a read sent again), upload and download redirects, the download cap.
+- `node tools/refs_layout_test.js` drives the adapter too: its capture plays the MCP server, so the retouch and
+  generate layouts are pinned against the tool arguments the builders send.
 - The gate `magnificsub` (`tools/magnificsub_test.py`, `--offline`): the Settings row signed out, in and out, the four
   recipes, one run of each verb through the window with the credits in the status line, the cutout list. Also
   `tools/recipes_test.js`, `tools/upscale_test.js` and the `magnific` gate (its row filter narrowed to leave the new row out).

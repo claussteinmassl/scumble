@@ -38,6 +38,8 @@ const T = require("./magnificsub_tables.js");
 const P = require("./magnificsub_pictures.js");
 
 const MAX_UPLOAD = 25 * 1000 * 1000;      // 25 MB: Magnific's plugin refuses more; the lower reading of "MB"
+const MAX_DOWNLOAD = 200 * 1000 * 1000;   // an original larger than this is no picture Scumble asked for: aborted
+const MAX_REDIRECTS = 5;
 const PUT_RETRIES = 3;
 const WAIT_SECONDS = 25;                  // creations_wait polls at most 25 s per call
 const DEFAULT_WAIT_MS = 15 * 60 * 1000;
@@ -83,10 +85,43 @@ function isTransportError(err) {
     return /ECONNRESET|ECONNREFUSED|socket hang up|^Not connected/i.test(msg);
 }
 
+/** An error of a URL the session will not fetch (never retried, never wrapped). */
+function refusal(text) {
+    const e = new Error(`Magnific (subscription): ${text}`);
+    e.code = "MAGNIFICSUB_REFUSED";
+    return e;
+}
+
+/** The body of a response, aborted once it passes `max` bytes (by its Content-Length, or while it streams). */
+async function readCapped(res, max) {
+    const tooLarge = () => new Error(`Magnific (subscription): the download is larger than ${Math.round(max / 1e6)} MB; aborted.`);
+    const len = Number(res.headers.get("content-length"));
+    if (Number.isFinite(len) && len > max) {
+        if (res.body) await res.body.cancel().catch(() => {});
+        throw tooLarge();
+    }
+    if (!res.body || typeof res.body.getReader !== "function") {
+        const b = Buffer.from(await res.arrayBuffer());
+        if (b.length > max) throw tooLarge();
+        return b;
+    }
+    const reader = res.body.getReader();
+    const parts = [];
+    let n = 0;
+    for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        n += value.byteLength;
+        if (n > max) { await reader.cancel().catch(() => {}); throw tooLarge(); }
+        parts.push(Buffer.from(value.buffer, value.byteOffset, value.byteLength));
+    }
+    return Buffer.concat(parts, n);
+}
+
 class Session {
     /**
-     * ctx: { keys (get/set/clear, keys.js in the app), settings, fetch?, sleep?, now?, version? }.
-     * fetch defaults to the global one; sleep and now are injected by the tests.
+     * ctx: { keys (get/set/clear, keys.js in the app), settings, fetch?, sleep?, now?, version?, maxDownload? }.
+     * fetch defaults to the global one; sleep, now and maxDownload are injected by the tests.
      */
     constructor(ctx) {
         this.ctx = ctx;
@@ -95,6 +130,7 @@ class Session {
         this.fetch = ctx.fetch || globalThis.fetch;
         this.sleep = ctx.sleep || realSleep;
         this.now = ctx.now || Date.now;
+        this.maxDownload = ctx.maxDownload || MAX_DOWNLOAD;
         this.client = null;
         this.connecting = null;
     }
@@ -173,10 +209,32 @@ class Session {
     /** A URL the session may fetch without credentials: https on a public host, or the mock's own origin in a test. */
     plainUrl(url, what) {
         let u;
-        try { u = new URL(String(url)); } catch (_) { throw new Error(`Magnific (subscription): the ${what} URL is not a URL.`); }
+        try { u = new URL(String(url)); } catch (_) { throw refusal(`the ${what} URL is not a URL.`); }
         const ok = this.server.test ? u.origin === new URL(this.server.url).origin : auth.publicHttps(u);
-        if (!ok) throw new Error(`Magnific (subscription): refused the ${what} URL at ${u.protocol}//${u.host} (https to a public host only).`);
+        if (!ok) throw refusal(`refused the ${what} URL at ${u.protocol}//${u.host} (https to a public host only).`);
         return u.toString();
+    }
+
+    /**
+     * A request without credentials to a URL plainUrl let through, following redirects by hand: each target is checked
+     * by plainUrl again (a public https URL that redirects to a local host is refused, not followed), at most 5 hops. A
+     * PUT follows only 307 and 308, the redirects that keep the method and the body.
+     */
+    async plainFetch(url, init, what) {
+        let at = url;
+        for (let hop = 0; ; hop++) {
+            const r = await this.fetch(at, { ...init, redirect: "manual" });
+            if (r.type === "opaqueredirect") throw refusal(`the ${what} was redirected; refused.`);
+            if (r.status < 300 || r.status >= 400 || r.status === 304) return r;
+            const loc = r.headers.get("location");
+            if (r.body) await r.body.cancel().catch(() => {});
+            if (!loc) throw refusal(`the ${what} answered ${r.status} without a target.`);
+            if (init.method === "PUT" && r.status !== 307 && r.status !== 308) throw refusal(`the ${what} was redirected (${r.status}); refused.`);
+            if (hop >= MAX_REDIRECTS) throw refusal(`the ${what} was redirected more than ${MAX_REDIRECTS} times; refused.`);
+            let next;
+            try { next = new URL(loc, at).toString(); } catch (_) { throw refusal(`the ${what} was redirected to no URL.`); }
+            at = this.plainUrl(next, what);
+        }
     }
 
     /**
@@ -194,8 +252,9 @@ class Session {
         for (let attempt = 0; ; attempt++) {
             let r;
             try {
-                r = await this.fetch(url, { method: "PUT", headers: { "content-type": mimeType }, body: buf });
+                r = await this.plainFetch(url, { method: "PUT", headers: { "content-type": mimeType }, body: buf }, "upload");
             } catch (err) {
+                if (err.code === "MAGNIFICSUB_REFUSED") throw err;
                 if (attempt < PUT_RETRIES) { await this.sleep(1000 * 2 ** attempt); continue; }
                 throw new Error(`Magnific (subscription): the upload failed - ${this.scrub(err.message)}`);
             }
@@ -243,9 +302,12 @@ class Session {
         if (!orig || !orig.url) throw new Error("Magnific creations_register_download: the answer named no original to download.");
         const url = this.plainUrl(orig.url, "download");
         let res;
-        try { res = await this.fetch(url); } catch (err) { throw new Error(`Magnific (subscription): the download failed - ${this.scrub(err.message)}`); }
+        try { res = await this.plainFetch(url, { method: "GET" }, "download"); } catch (err) {
+            if (err.code === "MAGNIFICSUB_REFUSED") throw err;
+            throw new Error(`Magnific (subscription): the download failed - ${this.scrub(err.message)}`);
+        }
         if (!res.ok) throw new Error(`Magnific (subscription): the download answered ${res.status}.`);
-        const bytes = Buffer.from(await res.arrayBuffer());
+        const bytes = await readCapped(res, this.maxDownload);
         return { bytes, mime: res.headers.get("content-type") || sniff(bytes) };
     }
 }
@@ -570,7 +632,7 @@ module.exports = {
     isTest: (settings) => auth.serverOf(settings).test,
     // the session
     Session, sessionFor, resetSession,
-    MAX_UPLOAD, WAIT_SECONDS, SIGN_IN_FIRST,
+    MAX_UPLOAD, MAX_DOWNLOAD, WAIT_SECONDS, SIGN_IN_FIRST,
     // exported for tools/magnificsub_test.js
     _isAuthError: isAuthError,
     _isTransportError: isTransportError,

@@ -155,7 +155,11 @@ function json(res, status, body, headers = {}) {
  *           realTokens: true (the next tokens issued do not start with "test-": the client must refuse to use them),
  *           waitMs (how long creations_wait sits on a processing creation, default 20), downloadUrl (overrides
  *           originals[].url), credits (what a creation costs, default 90), result (the bytes every finished creation
- *           of an images_* tool downloads as; default a small PNG tagged "RESULT <id>")
+ *           of an images_* tool downloads as; default a small PNG tagged "RESULT <id>"),
+ *           drop: [tool names] (the next tools/call of each named tool is recorded with `dropped: true` and its
+ *           connection destroyed before the tool runs: a dropped connection, once per entry),
+ *           putRedirect / getRedirect: { status, to, times? } (the next `times` (default 1) upload PUTs / asset GETs
+ *           answer `status` with Location `to`; "self" is the URL asked)
  */
 async function start({ port = 0, app = false } = {}) {
     const { Server } = require("@modelcontextprotocol/sdk/server/index.js");
@@ -167,7 +171,7 @@ async function start({ port = 0, app = false } = {}) {
     const calls = [];
     const httpLog = [];
     const oauth = { registrations: [], authorizations: [], grants: [], foreignTokens: [] };
-    const script = { put: [], reject401: 0, refreshFails: false, realTokens: false, waitMs: 20, downloadUrl: null, credits: 90, result: null, expireAccess: null };
+    const script = { drop: [], putRedirect: null, getRedirect: null, put: [], reject401: 0, refreshFails: false, realTokens: false, waitMs: 20, downloadUrl: null, credits: 90, result: null, expireAccess: null };
     const clients = new Map();      // client_id -> registered metadata
     const codes = new Map();        // code -> { client_id, redirect_uri, challenge }
     const access = new Set();       // valid access tokens
@@ -359,6 +363,13 @@ async function start({ port = 0, app = false } = {}) {
         if (!token || !access.has(token[1])) return unauthorized(token ? "token refused" : "no token");
         if (script.reject401 > 0) { script.reject401--; access.delete(token[1]); return unauthorized("token revoked (scripted)"); }
         const body = JSON.parse((await readBody(req)).toString("utf8"));
+        const at = body && body.method === "tools/call" ? script.drop.indexOf(body.params && body.params.name) : -1;
+        if (at >= 0) {
+            script.drop.splice(at, 1);
+            calls.push({ tool: body.params.name, args: body.params.arguments || {}, dropped: true });
+            req.socket.destroy();
+            return;
+        }
         const server = mcpServer();
         const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
         res.on("close", () => { transport.close(); server.close(); });
@@ -366,10 +377,22 @@ async function start({ port = 0, app = false } = {}) {
         await transport.handleRequest(req, res, body);
     }
 
+    /** Answers a scripted redirect (script.putRedirect / getRedirect) and counts it down; false when none is due. */
+    function redirect(key, res, u) {
+        const r = script[key];
+        if (!r) return false;
+        if (!(--r.times > 0)) script[key] = null;
+        res.writeHead(r.status, { location: r.to === "self" ? u.toString() : r.to });
+        res.end();
+        return true;
+    }
+
     const srv = http.createServer(async (req, res) => {
         const u = new URL(req.url, base);
         httpLog.push({ method: req.method, path: u.pathname, auth: req.headers.authorization || null, headers: Object.keys(req.headers) });
         try {
+            if (req.method === "PUT" && u.pathname.startsWith("/upload/") && script.putRedirect) { await readBody(req); if (redirect("putRedirect", res, u)) return; }
+            if (req.method === "GET" && u.pathname.startsWith("/asset/") && redirect("getRedirect", res, u)) return;
             if (u.pathname.startsWith("/.well-known/") || u.pathname.startsWith("/realm/")) {
                 if ((await oauthRoute(req, res, u)) === false) json(res, 404, { error: "not found" });
                 return;
