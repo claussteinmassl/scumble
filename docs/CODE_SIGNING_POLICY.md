@@ -68,10 +68,10 @@ certificate's key in the keychain; answer *Always Allow* once. Check the result 
 
 **The dmg.** electron-builder notarizes and staples the app but not the dmg. `build.dmg.sign` makes it sign the dmg, and
 the `afterAllArtifactBuild` hook `build/notarize-dmg.js` (build-time only, in no `files` list) then submits every dmg
-with `xcrun notarytool submit --wait` and staples it, using the same credentials as above (`APPLE_KEYCHAIN_PROFILE`
-[+ `APPLE_KEYCHAIN`], or the Apple ID trio, or `APPLE_API_KEY` + `APPLE_API_KEY_ID` + `APPLE_API_ISSUER`) (the dmg's checksum in
-`latest-mac.yml` is stale afterwards; the macOS updater is off and reads only the zip). Without credentials, or on a Windows or Linux build, it says so and does
-nothing. Two notarizations make a local build take several minutes.
+with `xcrun notarytool submit --wait` and staples it, using the same credentials as above (the Apple ID trio, or `APPLE_API_KEY` + `APPLE_API_KEY_ID` + `APPLE_API_ISSUER`,
+or `APPLE_KEYCHAIN_PROFILE` [+ `APPLE_KEYCHAIN`]) (the dmg's checksum in
+`latest-mac.yml` is stale afterwards; the macOS updater is off and reads only the zip). Without credentials, or when the dmg is not signed, it says so and skips; on a Windows or Linux
+build it returns silently. The credentials are taken in electron-builder's order: Apple ID, API key, keychain profile. Two notarizations make a local build take several minutes.
 
 **Build outside a cloud-synced folder.** Dropbox and iCloud file providers turn the symlinks in the Electron frameworks
 into plain files, and electron-builder's own `codesign --verify` then fails with "bundle format unrecognized". Point

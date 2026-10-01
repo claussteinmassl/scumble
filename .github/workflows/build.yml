@@ -176,7 +176,7 @@ jobs:
           # build/notarize-dmg.js has notarized and stapled the dmg; the upload below takes the finished files
           npx electron-builder --mac --arm64 --publish never
           if [[ "$GITHUB_REF" == refs/tags/v* && "$HAS_SIGNING" == "true" ]]; then
-            gh release upload "${GITHUB_REF#refs/tags/}" dist/Scumble-*-arm64.dmg dist/Scumble-*-arm64.zip dist/latest-mac.yml --clobber
+            gh release upload "${GITHUB_REF#refs/tags/}" dist/Scumble-*-arm64.dmg dist/Scumble-*-arm64.zip dist/Scumble-*-arm64.dmg.blockmap dist/Scumble-*-arm64.zip.blockmap dist/latest-mac.yml --clobber
           fi
 
       - uses: actions/upload-artifact@v4
