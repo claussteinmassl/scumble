@@ -134,7 +134,7 @@ run has touched Magnific's service.
   keeps the old one on failure), `magnificsub.js` (the session: upload, wait, download, the verbs, balance),
   `providers/index.js` (the `ready()` hook, `auth: "oauth"` rows, IPC `providers:status|signIn|cancelSignIn|signOut|cutout`).
 - The Settings row (Sign in / Cancel / Sign out, "check balance"), the status line's credits, the cutout backend
-  (only while signed in, listed last, never the default).
+  (only while signed in, listed last, used only when picked).
 
 ### Deviations from the plan above
 - **Four recipes, not three.** Upscale is split into **Magnific Creative (subscription)** and **Magnific Precision
@@ -146,13 +146,13 @@ run has touched Magnific's service.
   answer is cut back to the crop, so the pixels stay 1:1 within 2048 (`magnificsub_pictures.js`).
 - **The credits used show in the status line for this provider only** (not for Comfy Router or ToAPIs, whose lines
   stay as they were).
-- **The cutout backend appears only while signed in and is never the default** (`paid` backends are listed last).
+- **The cutout backend appears only while signed in and is used only when picked in the cutout list, never as the default or a fallback** (`paid` backends are listed last).
 - The `images_generate` field is `mode`, not `model`; `count: 1` and the seed go along. Mystic 2.5 and Recraft V4.1
   take reference layers as style pictures. The tables and the picture helpers are in `magnificsub_tables.js` and
   `magnificsub_pictures.js`. A creation tool that loses its connection is not sent again (no double charge).
 
 ### Tests that exist
-- `node tools/magnificsub_test.js` (plain Node, 153 checks) against `tools/magnificsub_mock.js`: sign-in, session,
+- `node tools/magnificsub_test.js` (plain Node, 154 checks) against `tools/magnificsub_mock.js`: sign-in, session,
   every verb's arguments against the copied schemas, upload retries, wait, host rule, retouch geometry, registry hook.
 - The gate `magnificsub` (`tools/magnificsub_test.py`, `--offline`): the Settings row signed out, in and out, the four
   recipes, one run of each verb through the window with the credits in the status line, the cutout list. Also

@@ -2096,7 +2096,7 @@ name a mock on `http://127.0.0.1:<port>`, and then only test credentials (`test-
 **The protocol.** One lazily connected MCP client per process (the SDK's `StreamableHTTPClientTransport` and its
 `OAuthClientProvider`). A run is: `creations_request_upload` -> an HTTP PUT of the bytes (a 5xx or a network error
 retried three times, a 4xx not) -> `creations_finalize_upload` with `visible: false` -> the tool -> `creations_wait`
-(at most 25 s per call, repeated up to 15 minutes, for an upscale 50) -> `creations_register_download`, which gives the untouched PNG
+(at most 25 s per call, repeated up to 15 minutes, for an upscale 50 minutes) -> `creations_register_download`, which gives the untouched PNG
 (the result's own URL is a JPEG re-encode). An upload over 25 MB is refused before any request. A transport error
 reconnects once and sends the call again only for tools that cannot charge; a creation tool that loses its
 connection says so ("it may still run and be charged") instead of running twice. A failed creation ends the run with
@@ -2141,8 +2141,10 @@ row calls `account_balance` and shows "N credits (plan)". The uploads are hidden
 Magnific creations and show in the user's Magnific library.
 
 **The cutout backend.** `images_remove_background`, the result's alpha as a grey mask (white = keep). It appears in
-the cutout backends only while signed in (`host.cutoutBackends`, `paid: true`) and is listed last, so a
-credit-spending backend never becomes the default while a free one exists (`availableCutoutBackends`). The layer
+the cutout backends only while signed in (`host.cutoutBackends`, `paid: true`) and is listed last. It is used only when picked in the
+cutout list, never as the default or a fallback: the list's value falls back to the first free backend, and a run with no
+free backend and nothing picked stops with the "No background removal model" message plus a hint to pick this one
+(`refreshCutoutBackends`, `cutoutLayer`). The layer
 goes out as a PNG (transparent on black, the long side at most 2048 px).
 
 **Registry hook.** An adapter may declare `auth: "oauth"` and `ready()` beside `needsKey`; `providers.edit` and
@@ -2152,7 +2154,7 @@ row (the other rows keep their seven fields). IPC: `providers:status|signIn|canc
 **Not in this step.** Outpainting (`images_expand` takes fixed aspect ratios, not margins per side), video, audio,
 3D, stock, a run-time model catalog, an estimate or a confirmation before a run. The server has 187 tools; the adapter uses nine of them, and their schemas are in `tools/refs/magnificsub/`.
 
-**Tests.** `node tools/magnificsub_test.js` (plain Node, 153 checks: the sign-in against the mock's OAuth realm, the
+**Tests.** `node tools/magnificsub_test.js` (plain Node, 154 checks: the sign-in against the mock's OAuth realm, the
 session, every verb's arguments against the copied schemas, the upload and its retries, the wait, the host rule, the
 retouch geometry, the registry hook, index.js's sign-in and cutout) against `tools/magnificsub_mock.js`
 (`node tools/magnificsub_mock.js --port N`, or `--app` for decodable pictures and `GET /__mock/calls`; scripted
