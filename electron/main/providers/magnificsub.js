@@ -270,8 +270,9 @@ class Session {
     }
 
     /**
-     * Waits for a creation: the creations_wait entry once "completed"; throws with the server's reason on "failed",
-     * and "timed out" after opts.timeoutMs (default 15 minutes).
+     * Waits for a creation: the creations_wait entry once "completed", as the server gave it (its `results.url` is
+     * what download() falls back to); throws with the server's reason on "failed", and "timed out" after
+     * opts.timeoutMs (default 15 minutes).
      */
     async waitFor(id, opts = {}) {
         const timeoutMs = opts.timeoutMs == null ? DEFAULT_WAIT_MS : opts.timeoutMs;
@@ -295,12 +296,21 @@ class Session {
         throw new Error(`Magnific (subscription): the creation ${id} timed out after ${Math.round(timeoutMs / 1000)} s (it may still finish in your Magnific library).`);
     }
 
-    /** The creation's original: { bytes, mime }, downloaded without credentials. */
-    async download(id) {
+    /**
+     * The creation's file: { bytes, mime }, downloaded without credentials. creations_register_download is always
+     * called (it records the download). Its `originals[]` carries the untouched original only of a creation whose
+     * `results.url` is a re-encode (an upscale, measured live); for any other (a generated image) the list names none,
+     * and `results.url` of the completed wait entry (`entry`, from waitFor) is the file itself. Either URL goes through
+     * the same checks (plainUrl, plainFetch's redirects, the size cap).
+     */
+    async download(id, entry = null) {
         const r = await this.call("creations_register_download", { identifiers: [id], tool: "scumble" });
-        const orig = r && Array.isArray(r.originals) && (r.originals.find((o) => o && o.identifier === id) || r.originals[0]);
-        if (!orig || !orig.url) throw new Error("Magnific creations_register_download: the answer named no original to download.");
-        const url = this.plainUrl(orig.url, "download");
+        const list = r && Array.isArray(r.originals) ? r.originals.filter((o) => o && o.url) : [];
+        const orig = list.find((o) => o.identifier === id) || (list.length === 1 && !list[0].identifier ? list[0] : null);
+        const own = entry && entry.results && typeof entry.results.url === "string" && entry.results.url ? entry.results.url : null;
+        const from = orig ? orig.url : own;
+        if (!from) throw new Error(`Magnific (subscription): the creation ${id} is done, but neither creations_register_download (no original) nor creations_wait (no results.url) named a file to download.`);
+        const url = this.plainUrl(from, "download");
         let res;
         try { res = await this.plainFetch(url, { method: "GET" }, "download"); } catch (err) {
             if (err.code === "MAGNIFICSUB_REFUSED") throw err;
@@ -343,8 +353,8 @@ async function create(S, tool, args, waitMs) {
     const r = await S.call(tool, args);
     const c = r && typeof r === "object" ? (r.creation || (Array.isArray(r.creations) ? r.creations[0] : null)) : null;
     if (!c || !c.identifier) throw new Error(`Magnific ${tool}: the answer named no creation${r && r.partialFailure ? ` (${S.scrub(r.partialFailure)})` : ""}.`);
-    await S.waitFor(c.identifier, { timeoutMs: waitMs });
-    const file = await S.download(c.identifier);
+    const entry = await S.waitFor(c.identifier, { timeoutMs: waitMs });
+    const file = await S.download(c.identifier, entry);
     return { ...file, credits: Number.isFinite(+c.credits) && c.credits !== null ? +c.credits : null, identifier: c.identifier };
 }
 

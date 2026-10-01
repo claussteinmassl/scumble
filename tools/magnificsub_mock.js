@@ -154,7 +154,9 @@ function json(res, status, body, headers = {}) {
  *           expireAccess(): every access token issued so far stops working, refreshFails: true (invalid_grant),
  *           realTokens: true (the next tokens issued do not start with "test-": the client must refuse to use them),
  *           waitMs (how long creations_wait sits on a processing creation, default 20), downloadUrl (overrides
- *           originals[].url), credits (what a creation costs, default 90), result (the bytes every finished creation
+ *           originals[].url), resultUrl (overrides the wait entry's results.url; false leaves it out), noOriginals
+ *           (the tools whose creations creations_register_download names no original for, as Magnific does for a
+ *           creation whose results.url is no re-encode; default ["images_generate"]), credits (what a creation costs, default 90), result (the bytes every finished creation
  *           of an images_* tool downloads as; default a small PNG tagged "RESULT <id>"),
  *           drop: [tool names] (the next tools/call of each named tool is recorded with `dropped: true` and its
  *           connection destroyed before the tool runs: a dropped connection, once per entry),
@@ -171,7 +173,7 @@ async function start({ port = 0, app = false } = {}) {
     const calls = [];
     const httpLog = [];
     const oauth = { registrations: [], authorizations: [], grants: [], foreignTokens: [] };
-    const script = { drop: [], putRedirect: null, getRedirect: null, put: [], reject401: 0, refreshFails: false, realTokens: false, waitMs: 20, downloadUrl: null, credits: 90, result: null, expireAccess: null };
+    const script = { drop: [], putRedirect: null, getRedirect: null, put: [], reject401: 0, refreshFails: false, realTokens: false, waitMs: 20, downloadUrl: null, resultUrl: null, noOriginals: ["images_generate"], credits: 90, result: null, expireAccess: null };
     const clients = new Map();      // client_id -> registered metadata
     const codes = new Map();        // code -> { client_id, redirect_uri, challenge }
     const access = new Set();       // valid access tokens
@@ -296,14 +298,18 @@ async function start({ port = 0, app = false } = {}) {
                         if (c.status === "failed") c.failureReason = "mock: the model refused the picture";
                     }
                     if (c.status === "failed") return { identifier: c.identifier, status: "failed", failureReason: c.failureReason };
-                    return { identifier: c.identifier, status: c.status, failureReason: null, results: { url: `${base}/asset/${c.identifier}.jpg`, thumbnailUrl: `${base}/asset/${c.identifier}.jpg` } };
+                    const url = script.resultUrl === false ? null : script.resultUrl || `${base}/asset/${c.identifier}.jpg`;
+                    return { identifier: c.identifier, status: c.status, failureReason: null, results: url ? { url, thumbnailUrl: `${base}/asset/${c.identifier}.jpg` } : {} };
                 });
                 return { results, allTerminal: results.every((r) => r.status !== "processing") };
             }
             case "creations_register_download": {
                 const list = args.identifiers.map(known);
                 if (list.some((c) => !c)) return { error: "unknown creation identifier" };
-                return { recorded: list.length, skipped: 0, originals: list.map((c) => ({ identifier: c.identifier, url: script.downloadUrl || `${base}/asset/${c.identifier}.png` })) };
+                // as Magnific does: originals[] only for a creation whose results.url is a re-encode; none for the tools
+                // in script.noOriginals (a generated image's results.url is the file itself), and no key when none is left
+                const originals = list.filter((c) => !script.noOriginals.includes(c.tool)).map((c) => ({ identifier: c.identifier, url: script.downloadUrl || `${base}/asset/${c.identifier}.png` }));
+                return originals.length ? { recorded: list.length, skipped: 0, originals } : { recorded: list.length, skipped: 0 };
             }
             case "creations_get": {
                 const c = known(args.creationIdentifier);

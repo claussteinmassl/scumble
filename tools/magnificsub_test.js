@@ -1067,6 +1067,44 @@ async function main() {
                 && ["sharpness", "grain", "ultraDetail"].every((k) => rp[k].spec[1].min === S[k][1] && rp[k].spec[1].max === S[k][2]));
         });
 
+        await section("24b. the file of a creation: the original, or results.url when there is none", async () => {
+            const gets = (h0) => mock.http.slice(h0).filter((h) => h.method === "GET" && h.path.startsWith("/asset/")).map((h) => h.path);
+            // generate: Magnific names no original (results.url is no re-encode); the wait entry's results.url is the file
+            let c0 = mock.calls.length, h0 = mock.http.length;
+            const gen = await sub.generate({ kind: "text", prompt: "a fox", width: 1024, height: 1024, references: [], params: {} }, vctx);
+            const id = toolCalls(c0).find((x) => x.tool === "creations_wait").args.identifiers[0];
+            check("generate: creations_register_download is still called (it records the download), names no original, and the file comes from results.url",
+                eq(toolsOf(c0), ["images_generate", "creations_wait", "creations_register_download"]) && eq(gets(h0), [`/asset/${id}.jpg`]) && gen.bytes.toString("latin1", 33, 39) === "RESULT" && gen.width === 64, short(gets(h0)));
+            // upscale: the original is named and preferred over results.url (the JPEG re-encode)
+            c0 = mock.calls.length; h0 = mock.http.length;
+            await sub.upscale({ kind: "upscale", model: "images_upscale:creative", image: pngBytes(300, "ORIG-PREF"), factor: 2, params: {} }, vctx);
+            const upId = toolCalls(c0).find((x) => x.tool === "images_upscale") && toolCalls(c0).find((x) => x.tool === "creations_wait").args.identifiers[0];
+            check("upscale: the original from creations_register_download, not results.url", eq(gets(h0), [`/asset/${upId}.png`]), short(gets(h0)));
+            // retouch and remove_background without originals: the same fallback
+            const keep = mock.script.noOriginals;
+            mock.script.noOriginals = ["images_generate", "images_retouch", "images_remove_background"];
+            try {
+                const small = codec.fromBitmap(greyOf(800, 600, (x) => x & 255));
+                h0 = mock.http.length;
+                const rt = await sub.edit({ kind: "fill", prompt: "sky", image: small, mask: small, params: {} }, vctx);
+                const rtGets = gets(h0);
+                mock.script.result = codec.fromBitmap({ width: 2, height: 1, data: Buffer.from([1, 2, 3, 0, 1, 2, 3, 255]) });
+                h0 = mock.http.length;
+                let cut;
+                try { cut = await sub.cutout(pngBytes(300, "CUT2"), vctx); } finally { mock.script.result = null; }
+                check("retouch and remove_background with no original named: both download results.url", rtGets.length === 1 && rtGets[0].endsWith(".jpg") && rt.width === 64 && gets(h0).length === 1 && gets(h0)[0].endsWith(".jpg") && cut.width === 2, short([rtGets, gets(h0)]));
+            } finally { mock.script.noOriginals = keep; }
+            // neither: a clear error; a results.url outside the mock: refused, not fetched
+            mock.script.resultUrl = false;
+            let e;
+            try { e = await throws(() => sub.generate({ kind: "text", prompt: "a fox", width: 1024, height: 1024, references: [], params: {} }, vctx)); } finally { mock.script.resultUrl = null; }
+            check("no original and no results.url: the run fails in words", /neither creations_register_download \(no original\) nor creations_wait \(no results\.url\) named a file/.test(e || ""), e);
+            mock.script.resultUrl = "http://example.com/x.png";
+            const r0 = rec.log.length;
+            try { e = await throws(() => sub.generate({ kind: "text", prompt: "a fox", width: 1024, height: 1024, references: [], params: {} }, vctx)); } finally { mock.script.resultUrl = null; }
+            check("a results.url outside the mock goes through the same check: refused, not fetched", /refused the download URL at http:\/\/example\.com/.test(e || "") && !rec.log.slice(r0).some((x) => x.url.includes("example.com")), e);
+        });
+
         await section("25. the whole run", async () => {
             const leaked = ERRORS.filter((m) => [...SEEN_TOKENS].some((t) => m.includes(t)));
             check("no token appears in any error of the run", SEEN_TOKENS.size >= 6 && ERRORS.length >= 15 && leaked.length === 0, `${ERRORS.length} errors, ${SEEN_TOKENS.size} tokens`);
