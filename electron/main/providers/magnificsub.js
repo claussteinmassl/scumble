@@ -45,13 +45,24 @@ function isAuthError(err) {
     return /401 after successful authentication/.test(String(err.message || ""));
 }
 
-/** True for an error of the connection itself (no answer, a dropped session), not of the tool or the sign-in. */
+// the error codes of a connection that broke (Node's sockets and undici, fetch's own)
+const NETWORK_CODES = /^(ECONNRESET|ECONNREFUSED|ECONNABORTED|EPIPE|ETIMEDOUT|ENETUNREACH|EHOSTUNREACH|ENOTFOUND|EAI_AGAIN|UND_ERR_[A-Z_]+)$/;
+
+/**
+ * True for an error of the connection itself (no answer, a dropped session), not of the tool, the sign-in or the code:
+ * the SDK's HTTP error, fetch's "fetch failed" TypeError (whose cause names the socket's error), a socket error code,
+ * the SDK's "Not connected". Any other TypeError is a fault in the code and is not retried.
+ */
 function isTransportError(err) {
     if (!err || isAuthError(err)) return false;
     const name = err.constructor && err.constructor.name;
     if (name === "McpError") return false;
     if (name === "StreamableHTTPError") return true;
-    return err instanceof TypeError || /fetch failed|ECONNRESET|ECONNREFUSED|socket hang up|Not connected/i.test(String(err.message || ""));
+    const msg = String(err.message || "");
+    const code = String(err.code || (err.cause && err.cause.code) || "");
+    if (NETWORK_CODES.test(code)) return true;
+    if (err instanceof TypeError) return /^(fetch failed|network error|Failed to fetch)/i.test(msg);
+    return /ECONNRESET|ECONNREFUSED|socket hang up|^Not connected/i.test(msg);
 }
 
 class Session {
@@ -97,7 +108,7 @@ class Session {
         auth.checkToken(this.server.test, tokens.refresh_token);
         const { Client, Transport } = auth.sdk();
         const provider = new auth.Provider({ keys: this.keys, server: this.server });
-        const transport = new Transport(new URL(this.server.url), { authProvider: provider, fetch: auth.guardFetch(this.fetch, this.server) });
+        const transport = new Transport(new URL(this.server.url), { authProvider: provider, fetch: auth.guardFetch(this.fetch, this.server, auth.storedPin(this.keys)) });
         const client = new Client({ name: "scumble", version: this.ctx.version || "0" });
         try {
             await client.connect(transport);
@@ -141,12 +152,12 @@ class Session {
         }
     }
 
-    /** A URL the session may fetch without credentials: https, or the mock's own origin in a test. */
+    /** A URL the session may fetch without credentials: https on a public host, or the mock's own origin in a test. */
     plainUrl(url, what) {
         let u;
         try { u = new URL(String(url)); } catch (_) { throw new Error(`Magnific (subscription): the ${what} URL is not a URL.`); }
-        const ok = this.server.test ? u.origin === new URL(this.server.url).origin : u.protocol === "https:";
-        if (!ok) throw new Error(`Magnific (subscription): refused the ${what} URL at ${u.protocol}//${u.host} (https only).`);
+        const ok = this.server.test ? u.origin === new URL(this.server.url).origin : auth.publicHttps(u);
+        if (!ok) throw new Error(`Magnific (subscription): refused the ${what} URL at ${u.protocol}//${u.host} (https to a public host only).`);
         return u.toString();
     }
 

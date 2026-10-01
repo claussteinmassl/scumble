@@ -379,7 +379,8 @@ async function main() {
             check("against Magnific the real token goes to https://mcp.magnific.com, and every request goes there",
                 bal.plan.productName === "Scripted" && sent.length >= 3 && sent.every((r) => r.url === "https://mcp.magnific.com/")
                 && sent.filter((r) => r.method === "POST").every((r) => r.auth === "Bearer " + realTokens.access_token), short(sent));
-            const guard = auth.guardFetch(async () => new Response("{}"), { url: auth.HOST, test: false });
+            const REALM = "https://auth.magnific.com";
+            const guard = auth.guardFetch(async () => new Response("{}"), { url: auth.HOST, test: false }, { origin: () => REALM });
             e = await throws(() => guard("http://127.0.0.1:5/", { headers: { authorization: "Bearer " + realTokens.access_token } }));
             const e2 = await throws(() => guard("https://elsewhere.example/", { headers: { authorization: "Bearer " + realTokens.access_token } }));
             const e3 = await throws(() => guard("https://auth.magnific.com/realms/mcp/protocol/openid-connect/token", { method: "POST", body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: "test-rt-9" }) }));
@@ -389,7 +390,123 @@ async function main() {
             await S4.close();
         });
 
-        await section("12. the whole run", async () => {
+        await section("12. hardening: the token endpoint pinned at sign-in", async () => {
+            // the guard against Magnific: a refresh or a code only to the origin the sign-in recorded
+            const ok = async () => new Response("{}");
+            const real = { url: auth.HOST, test: false };
+            const REALM = "https://auth.magnific.com";
+            const pinned = auth.guardFetch(ok, real, { origin: () => REALM });
+            const form = (grant) => ({ method: "POST", body: new URLSearchParams(grant === "refresh_token" ? { grant_type: grant, refresh_token: "eyJreal-refresh-0123456789" } : { grant_type: grant, code: "c", code_verifier: "v" }) });
+            const e1 = await throws(() => pinned("https://evil.example/token", form("refresh_token")));
+            const e2 = await throws(() => pinned("https://evil.example/token", form("authorization_code")));
+            const r1 = await pinned(REALM + "/realms/mcp/protocol/openid-connect/token", form("refresh_token"));
+            check("a refresh or a code to another origin than the pinned one is refused; to the pinned one it goes",
+                /refused a token request to evil\.example; the sign-in was made at auth\.magnific\.com/.test(e1 || "") && /refused a token request to evil\.example/.test(e2 || "") && r1.status === 200, [e1, e2].join(" | "));
+            const unpinned = auth.guardFetch(ok, real, { origin: () => null });
+            const e3 = await throws(() => unpinned(REALM + "/token", form("refresh_token")));
+            const e4 = await throws(() => auth.guardFetch(ok, real)(REALM + "/token", form("refresh_token")));
+            check("without a recorded origin a run sends no token request at all (sign in again)", e3 === auth.RESIGN && e4 === auth.RESIGN, [e3, e4].join(" | "));
+            let recorded = null;
+            const signing = auth.guardFetch(ok, real, { origin: () => recorded, record: (o) => { recorded = o; } });
+            await signing(REALM + "/token", form("authorization_code"));
+            const e5 = await throws(() => signing("https://other.example/token", form("refresh_token")));
+            check("a sign-in records the origin of its code exchange, and holds the next token request to it", recorded === REALM && /refused a token request to other\.example/.test(e5 || ""), `${recorded}: ${e5}`);
+
+            // against the mock: a stored pin that names another origin stops the refresh before it is sent
+            const k = fakeKeys();
+            await auth.signIn({ keys: k, settings, openExternal: browser(), fetch: rec });
+            remember(k);
+            check("the sign-in recorded its token endpoint's origin (the mock's realm)", stored(k).tokenOrigin === mock.base, stored(k).tokenOrigin);
+            const S = new sub.Session({ keys: k, settings, fetch: rec, sleep: fakeSleep });
+            await S.call("account_balance", {});
+            k.set("magnificsub", JSON.stringify({ ...stored(k), tokenOrigin: "http://127.0.0.1:1" }));
+            mock.script.expireAccess();
+            const g0 = mock.oauth.grants.length;
+            const e6 = await throws(() => S.call("account_balance", {}));
+            check("a pin that no longer matches: no refresh is sent, the run says to sign in again", e6 === auth.RESIGN && mock.oauth.grants.length === g0, `${e6}; ${mock.oauth.grants.length - g0} grants`);
+            await S.close();
+        });
+
+        await section("13. hardening: no local or private host outside a test", async () => {
+            const real = { url: auth.HOST, test: false };
+            const guard = auth.guardFetch(async () => new Response("{}"), real, { origin: () => "https://auth.magnific.com" });
+            const hosts = ["https://127.0.0.1/", "https://localhost/", "https://x.localhost/", "https://10.0.0.5/", "https://172.16.3.4/", "https://192.168.1.1/",
+                "https://169.254.169.254/latest", "https://[::1]/", "https://[fd00::1]/", "https://[::ffff:7f00:1]/", "https://2130706433/", "https://printer.local/"];
+            const refused = [];
+            for (const h of hosts) { const e = await throws(() => guard(h)); if (/local or private address/.test(e || "")) refused.push(h); }
+            check("the guard refuses every loopback, private, link-local and mDNS host even over https", refused.length === hosts.length, hosts.filter((h) => !refused.includes(h)).join(", "));
+            const pub = await guard("https://mcp.magnific.com/");
+            check("... and lets a public https host through", pub.status === 200);
+            const S = new sub.Session({ keys: fakeKeys(), settings: {}, fetch: async () => new Response("") });
+            const e1 = await throws(() => S.plainUrl("https://127.0.0.1/x.png", "download"));
+            const e2 = await throws(() => S.plainUrl("https://192.168.0.2/up", "upload"));
+            check("an upload or download URL on a local or private host is refused too", /refused the download URL at https:\/\/127\.0\.0\.1/.test(e1 || "") && /refused the upload URL/.test(e2 || "") && S.plainUrl("https://cdn.magnific.com/a.png", "download") === "https://cdn.magnific.com/a.png", [e1, e2].join(" | "));
+            const P = new auth.Provider({ keys: fakeKeys(), server: real, redirect: "http://127.0.0.1:5/callback", open: async () => {} });
+            const e3 = await throws(() => P.redirectToAuthorization("https://10.1.1.1/auth"));
+            check("the sign-in page is never opened on a private host", /refused to open the sign-in page at https:\/\/10\.1\.1\.1/.test(e3 || ""), e3);
+        });
+
+        await section("14. hardening: what counts as a dropped connection", async () => {
+            const net = new TypeError("fetch failed");
+            net.cause = Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" });
+            const code = Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:1"), { code: "ECONNREFUSED" });
+            const bug = new TypeError("Cannot read properties of undefined (reading 'x')");
+            const notFn = new TypeError("client.callTool is not a function");
+            check("fetch failed, a socket error code and Not connected are dropped connections",
+                sub._isTransportError(net) && sub._isTransportError(code) && sub._isTransportError(new Error("Not connected")));
+            check("a TypeError of the code is not (it is never retried as a dropped connection)", !sub._isTransportError(bug) && !sub._isTransportError(notFn));
+        });
+
+        await section("15. hardening: a re-sign-in keeps the old sign-in until it succeeds", async () => {
+            const k = fakeKeys();
+            await auth.signIn({ keys: k, settings, openExternal: browser(), fetch: rec });
+            remember(k);
+            const before = k.data.magnificsub;
+            // the browser never answers: the sign-in times out
+            const e1 = await throws(() => auth.signIn({ keys: k, settings, openExternal: async () => {}, fetch: rec, timeoutMs: 200 }));
+            check("a re-sign-in that times out fails with the timeout", /the sign-in timed out/.test(e1 || ""), e1);
+            check("... and the stored sign-in is the one before, still signed in", k.data.magnificsub === before && eq(auth.status({ keys: k, settings }), { signedIn: true, account: "Mock Plan" }));
+            // the browser cannot be opened: the sign-in fails at once
+            const e2 = await throws(() => auth.signIn({ keys: k, settings, openExternal: async () => { throw new Error("no browser"); }, fetch: rec }));
+            check("a re-sign-in that fails (no browser) leaves the stored sign-in as it was", !!e2 && k.data.magnificsub === before, e2);
+            const S = new sub.Session({ keys: k, settings, fetch: rec, sleep: fakeSleep });
+            const bal = await S.call("account_balance", {});
+            check("... and a run still works with it", bal.plan.productName === "Mock Plan");
+            await S.close();
+            await auth.signIn({ keys: k, settings, openExternal: browser(), fetch: rec });
+            remember(k);
+            check("a re-sign-in that succeeds replaces it", k.data.magnificsub !== before && auth.status({ keys: k, settings }).signedIn === true);
+        });
+
+        await section("16. hardening: a callback with the wrong state keeps the sign-in waiting", async () => {
+            const k = fakeKeys();
+            const answers = [];
+            const open = async (url) => {
+                const redirect = new URL(url).searchParams.get("redirect_uri");
+                // a stale tab (another state) and a request without any state come first
+                for (const q of ["?code=forged&state=not-this-one", "?error=access_denied&state=other", "?code=forged"]) {
+                    const r = await fetch(redirect + q);
+                    answers.push([r.status, await r.text()]);
+                }
+                await browser()(url);
+            };
+            const g0 = mock.oauth.grants.length;
+            const st = await auth.signIn({ keys: k, settings, openExternal: open, fetch: rec });
+            remember(k);
+            check("the wrong answers get 400 with a short page", answers.length === 3 && answers.every(([status, text]) => status === 400 && /does not belong to the sign-in/.test(text)), short(answers));
+            check("... the sign-in kept waiting and finished with the right answer (one code traded, the forged one never)", eq(st, { signedIn: true, account: "Mock Plan" })
+                && eq(mock.oauth.grants.slice(g0).map((g) => g.grant_type), ["authorization_code"]), short(mock.oauth.grants.slice(g0)));
+            // the right state with the realm's error ends the sign-in
+            const k2 = fakeKeys();
+            const deny = async (url) => {
+                const u = new URL(url);
+                await fetch(`${u.searchParams.get("redirect_uri")}?error=access_denied&error_description=${encodeURIComponent("The user said no")}&state=${u.searchParams.get("state")}`);
+            };
+            const e = await throws(() => auth.signIn({ keys: k2, settings, openExternal: deny, fetch: rec, timeoutMs: 5000 }));
+            check("an error with the right state ends the sign-in with the realm's words, and stores nothing", e === "Magnific refused the sign-in: The user said no" && !("magnificsub" in k2.data), e);
+        });
+
+        await section("17. the whole run", async () => {
             const leaked = ERRORS.filter((m) => [...SEEN_TOKENS].some((t) => m.includes(t)));
             check("no token appears in any error of the run", SEEN_TOKENS.size >= 6 && ERRORS.length >= 15 && leaked.length === 0, `${ERRORS.length} errors, ${SEEN_TOKENS.size} tokens`);
             check("the mock never saw a non-test Bearer token", mock.oauth.foreignTokens.length === 0);

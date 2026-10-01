@@ -57,6 +57,28 @@ function checkToken(test, token) {
     if (!test && isTest) throw new Error("Magnific (subscription): a test sign-in is never sent to Magnific; sign in again under Settings › API providers.");
 }
 
+/**
+ * True for a host a request must never reach outside a test: localhost, a loopback, private, link-local or carrier-grade
+ * NAT address (IPv4 or IPv6, an IPv4-mapped IPv6 address included), an mDNS name. Only the literal host is checked; a
+ * public name that resolves to such an address is not (no DNS lookup here).
+ */
+function privateHost(hostname) {
+    const h = String(hostname || "").toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
+    if (!h || h === "localhost" || h.endsWith(".localhost") || h.endsWith(".local")) return true;
+    if (/^\d+\.\d+\.\d+\.\d+$/.test(h)) {
+        const [a, b] = h.split(".").map(Number);
+        return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31)
+            || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127);
+    }
+    if (h.includes(":")) return h === "::" || h === "::1" || /^f[cd]/.test(h) || /^fe[89ab]/.test(h) || h.startsWith("::ffff:");
+    return false;
+}
+
+/** An https URL on a public host: what a request outside a test may go to. */
+function publicHttps(u) {
+    return u.protocol === "https:" && !privateHost(u.hostname);
+}
+
 /** The text with every secret in `secrets` replaced, and any Bearer value. */
 function scrub(text, secrets = []) {
     let s = String(text == null ? "" : text);
@@ -72,24 +94,35 @@ function headerOf(headers, name) {
     return k ? headers[k] : null;
 }
 
+/** A token request's form body (grant_type=...), or null for any other request. */
+function grantForm(init) {
+    const body = init && init.body;
+    if (body instanceof URLSearchParams) return body.get("grant_type") ? body : null;
+    return typeof body === "string" && /(^|&)grant_type=/.test(body) ? new URLSearchParams(body) : null;
+}
+
 /** The credentials a request carries: the Bearer token and a refresh token in a form body. */
 function credentialsOf(init) {
     const out = [];
     const auth = headerOf(init && init.headers, "authorization");
     const m = auth && /^Bearer\s+(.+)$/i.exec(String(auth));
     if (m) out.push(m[1]);
-    const body = init && init.body;
-    const form = body instanceof URLSearchParams ? body : (typeof body === "string" && /(^|&)grant_type=/.test(body) ? new URLSearchParams(body) : null);
+    const form = grantForm(init);
     if (form && form.get("refresh_token")) out.push(form.get("refresh_token"));
     return out;
 }
 
 /**
  * fetch with the host rule on every request: against the mock, nothing leaves the mock's origin and every credential
- * is a test one; against Magnific, nothing goes over plain http or to a loopback address, every credential is a real
- * one, and the access token goes to the MCP server's origin alone (the refresh token to the realm's token endpoint).
+ * is a test one; against Magnific, nothing goes over plain http or to a loopback or private address, every credential
+ * is a real one, and the access token goes to the MCP server's origin alone.
+ *
+ * `pin` holds the token endpoint's origin: { origin() -> string | null, record?(origin) }. A sign-in records the origin
+ * of its code exchange (the first token request it makes, to the endpoint the realm's metadata named); every later
+ * token request (a refresh, another code) must go to that origin. A run cannot record one: without a recorded origin
+ * it sends no token request at all, so the refresh token never goes anywhere a changed metadata document points to.
  */
-function guardFetch(fetchImpl, server) {
+function guardFetch(fetchImpl, server, pin = null) {
     const origin = new URL(server.url).origin;
     return async (input, init) => {
         const u = new URL(typeof input === "string" || input instanceof URL ? String(input) : input.url);
@@ -99,16 +132,35 @@ function guardFetch(fetchImpl, server) {
             if (u.origin !== origin) throw new Error(`Magnific (subscription): the test server sent the app to ${u.origin}; refused.`);
         } else {
             if (u.protocol !== "https:") throw new Error(`Magnific (subscription): refused a request over ${u.protocol} to ${u.host}.`);
+            if (!publicHttps(u)) throw new Error(`Magnific (subscription): refused a request to the local or private address ${u.host}.`);
             const bearer = /^Bearer\s/i.test(String(headerOf(init && init.headers, "authorization") || ""));
             if (bearer && u.origin !== origin) throw new Error(`Magnific (subscription): refused to send the sign-in to ${u.host}.`);
+        }
+        const form = grantForm(init);
+        if (form) {
+            const known = pin ? pin.origin() : null;
+            if (known) {
+                if (u.origin !== known) throw new Error(`Magnific (subscription): refused a token request to ${u.host}; the sign-in was made at ${new URL(known).host}.`);
+            } else if (pin && pin.record && form.get("grant_type") === "authorization_code") {
+                pin.record(u.origin);
+            } else {
+                const e = new Error(RESIGN);
+                e.code = "MAGNIFICSUB_REAUTH";
+                throw e;
+            }
         }
         return fetchImpl(input, init);
     };
 }
 
+/** The pin of the stored sign-in (read only: a run never records one). */
+function storedPin(keys) {
+    return { origin: () => load(keys).tokenOrigin || null };
+}
+
 // ---- the stored value -----------------------------------------------------------------------------------------------
 
-/** The stored JSON ({} when none): { server, redirect, client, tokens, codeVerifier, account }. */
+/** The stored JSON ({} when none): { server, redirect, client, tokens, tokenOrigin, codeVerifier, account }. */
 function load(keys) {
     try { return JSON.parse(keys.get(NAME) || "{}") || {}; } catch (_) { return {}; }
 }
@@ -171,7 +223,7 @@ class Provider {
     async redirectToAuthorization(url) {
         if (!this.interactive) { const e = new Error(RESIGN); e.code = "MAGNIFICSUB_REAUTH"; throw e; }
         const u = new URL(String(url));
-        const ok = this.server.test ? u.origin === new URL(this.server.url).origin : u.protocol === "https:";
+        const ok = this.server.test ? u.origin === new URL(this.server.url).origin : publicHttps(u);
         if (!ok) throw new Error(`Magnific (subscription): refused to open the sign-in page at ${u.origin}.`);
         await this.open(u.toString());
     }
@@ -180,7 +232,9 @@ class Provider {
 // ---- the loopback redirect ----------------------------------------------------------------------------------------
 
 /**
- * A server on 127.0.0.1 at an ephemeral port that takes one /callback and closes. Returns
+ * A server on 127.0.0.1 at an ephemeral port that takes the /callback of this sign-in and closes. An answer with
+ * another state (a stale tab, another program's request) gets a 400 and the server keeps waiting for the right one or
+ * the timeout; an answer with the right state ends the wait, with the code or with the realm's error. Returns
  * { redirect, code (a promise of the authorization code), close }.
  */
 async function listenForCode({ state, timeoutMs = SIGN_IN_TIMEOUT_MS }) {
@@ -192,12 +246,19 @@ async function listenForCode({ state, timeoutMs = SIGN_IN_TIMEOUT_MS }) {
         const u = new URL(req.url, "http://127.0.0.1");
         if (u.pathname !== "/callback") { res.writeHead(404); res.end(); return; }
         const q = u.searchParams;
+        const page = (status, text) => {
+            res.writeHead(status, { "content-type": "text/html; charset=utf-8", connection: "close" });
+            res.end(text === DONE_PAGE ? text : `<!doctype html><meta charset=utf-8><p>${String(text).replace(/[<>&]/g, "")}</p>`);
+        };
+        if (state && q.get("state") !== state) {
+            // not the answer to this sign-in: refused, and the sign-in keeps waiting
+            page(400, "This answer does not belong to the sign-in Scumble is waiting for. Go back to Scumble and sign in from there.");
+            return;
+        }
         let failure = null;
         if (q.get("error")) failure = `Magnific refused the sign-in: ${q.get("error_description") || q.get("error")}`;
-        else if (state && q.get("state") !== state) failure = "Magnific (subscription): the sign-in answer does not belong to this sign-in (state mismatch).";
         else if (!q.get("code")) failure = "Magnific (subscription): the sign-in answer carried no code.";
-        res.writeHead(failure ? 400 : 200, { "content-type": "text/html; charset=utf-8", connection: "close" });
-        res.end(failure ? `<!doctype html><meta charset=utf-8><p>${failure.replace(/[<>&]/g, "")}</p>` : DONE_PAGE);
+        page(failure ? 400 : 200, failure || DONE_PAGE);
         close();
         if (failure) settle.reject(new Error(failure)); else settle.resolve(q.get("code"));
     });
@@ -231,20 +292,30 @@ async function accountOf(client) {
     } catch (_) { return ""; }
 }
 
+/** A store like keys.js in memory: a sign-in in progress writes here, and only a finished one reaches keys.js. */
+function memoryStore() {
+    const data = {};
+    return { get: (n) => data[n] || "", set: (n, v) => { data[n] = String(v); }, clear: (n) => { delete data[n]; } };
+}
+
 /**
- * Signs in through the browser: a fresh start (whatever was stored goes), the loopback redirect, `openExternal(url)`
+ * Signs in through the browser: a fresh start (a new client, new tokens), the loopback redirect, `openExternal(url)`
  * with the realm's authorization page, the code from the redirect traded for tokens, one connect to confirm. Resolves
  * to status(). ctx: { keys, settings, openExternal, fetch?, timeoutMs?, version? }.
+ *
+ * Everything the sign-in writes goes to a store in memory first; the stored sign-in is replaced only when the new one
+ * has succeeded, so a sign-in that is cancelled, times out or fails leaves the old one as it was.
  */
 async function signIn(ctx) {
     const keys = ctx.keys;
+    const stage = memoryStore();
     const server = serverOf(ctx.settings);
-    const fetchImpl = guardFetch(ctx.fetch || globalThis.fetch, server);
+    const pin = { origin: () => load(stage).tokenOrigin || null, record: (o) => save(stage, { tokenOrigin: o }) };
+    const fetchImpl = guardFetch(ctx.fetch || globalThis.fetch, server, pin);
     const { Client, Transport, UnauthorizedError } = sdk();
-    keys.clear(NAME);
     const state = crypto.randomBytes(16).toString("hex");
     const wait = await listenForCode({ state, timeoutMs: ctx.timeoutMs });
-    const provider = new Provider({ keys, server, redirect: wait.redirect, state, open: async (url) => { await ctx.openExternal(url); } });
+    const provider = new Provider({ keys: stage, server, redirect: wait.redirect, state, open: async (url) => { await ctx.openExternal(url); } });
     const connect = async () => {
         const transport = new Transport(new URL(server.url), { authProvider: provider, fetch: fetchImpl });
         const client = new Client({ name: "scumble", version: ctx.version || "0" });
@@ -266,10 +337,11 @@ async function signIn(ctx) {
             if (!open.signedIn) throw new Error("Magnific (subscription): the server refused the new sign-in.");
         }
         const account = await accountOf(open.client);
-        save(keys, { codeVerifier: undefined, account: account || undefined });
+        save(stage, { codeVerifier: undefined, account: account || undefined });
+        keys.set(NAME, stage.get(NAME));
         return status(ctx);
     } catch (err) {
-        throw new Error(scrub(err && err.message || err, secretsOf(keys)));
+        throw new Error(scrub(err && err.message || err, [...secretsOf(stage), ...secretsOf(keys)]));
     } finally {
         wait.close();
         if (open) await open.client.close().catch(() => {});
@@ -299,6 +371,6 @@ function secretsOf(keys) {
 module.exports = {
     NAME, HOST, SCOPE, RESIGN, NOT_SIGNED_IN,
     signIn, signOut, status,
-    serverOf, testBase, checkToken, guardFetch, scrub, secretsOf,
+    serverOf, testBase, checkToken, guardFetch, storedPin, privateHost, publicHttps, scrub, secretsOf,
     Provider, load, sdk,
 };
