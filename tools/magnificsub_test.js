@@ -911,6 +911,13 @@ async function main() {
             const e3 = await throws(() => run2);
             check("... the sign-in ends as cancelled, the stored one is kept, nothing pends", /the sign-in was cancelled/.test(e3 || "") && store.data.magnificsub === before && eq(index.authStatus("magnificsub"), { signedIn: true, account: "Mock Plan" }), e3);
             check("cancel with nothing waiting: false", index.cancelSignIn("magnificsub") === false);
+            // a Cancel that comes after the browser's code arrived: the new sign-in is dropped all the same
+            const ac = new AbortController();
+            const late = async (url) => { await browser()(url); ac.abort(); };
+            const g0 = mock.oauth.grants.length;
+            const e5 = await throws(() => auth.signIn({ keys: store, settings, openExternal: late, fetch: rec, signal: ac.signal }));
+            check("... a Cancel after the code (traded already) still ends as cancelled and keeps the stored sign-in", /the sign-in was cancelled/.test(e5 || "") && store.data.magnificsub === before
+                && mock.oauth.grants.slice(g0).some((g) => g.grant_type === "authorization_code"), e5);
 
             const out = await index.signOut("magnificsub");
             check("sign out: signed out, and keys no longer hold magnificsub", eq(out, { signedIn: false }) && !("magnificsub" in store.data));

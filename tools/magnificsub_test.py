@@ -12,7 +12,8 @@ waits in providers:status, and this script GETs it (the mock's 302 lands on the 
   no key hint, no "check balance"; the four recipes' provider options read "(not signed in)";
 - Sign in from the row: "waiting for the browser…" with Cancel, then "signed in (Mock Plan)" with Sign out and "check
   balance", which answers "1000 credits (Mock Plan)"; the options lose "(not signed in)"; the cutout list offers
-  Magnific (subscription), last;
+  Magnific (subscription), last, and does not select it; the other rows are the same as signed out (and after Sign out);
+- a cutout click with nothing picked (no free backend in a gate profile) sends nothing and says to pick it;
 - one run each through the window: a Creative upscale of a small picture (the document twice as large), a retouch of a
   selection (a result layer), a cutout of that layer (its mask about half kept), Generate new (a 1024 x 1024 base);
   each status line names the 90 credits, and the mock saw each tool once with valid arguments;
@@ -61,6 +62,8 @@ PRE = """(async () => {
         buttons: Array.from(r.querySelectorAll("button")).map((b) => b.textContent),
         state: (r.querySelector(".shell-key-state") || {}).textContent || "",
     }));
+    const others = () => JSON.stringify(rows().filter((r) => r.label !== __LABEL__));
+    const sameOthers = (when) => { const now = others(); if (now !== window.__ms.otherRows) throw new Error("the other provider rows changed " + when + ": " + now.slice(0, 300) + " against " + window.__ms.otherRows.slice(0, 300)); };
     const optionOf = (id) => { const s = document.querySelector('.shell-recipe[data-id="' + id + '"] select'); const o = s && Array.from(s.options).find((x) => x.value === "magnificsub"); return o ? o.textContent : null; };
     const openSettings = async () => { if (!document.getElementById("shell-settings").open) { await shell.openSettings(); await wait(300); } };
     const closeSettings = () => { const d = document.getElementById("shell-settings"); if (d.open) d.close(); };
@@ -92,6 +95,7 @@ const got = rows();
 if (JSON.stringify(got.map((r) => r.label)) !== JSON.stringify(want)) throw new Error("the rows " + got.map((r) => r.label).join(", ") + " against main's list " + want.join(", "));
 const bad = got.filter((r) => r.label !== __LABEL__ && (!r.input || JSON.stringify(r.buttons) !== '["Save","Clear"]'));
 if (bad.length) throw new Error("key rows without their input or buttons: " + JSON.stringify(bad));
+window.__ms.otherRows = others();   // compared again signed in and after Sign out
 const sub = got.find((r) => r.label === __LABEL__);
 if (!sub || sub.input || JSON.stringify(sub.buttons) !== '["Sign in"]' || sub.state !== "not signed in") throw new Error("the sign-in row signed out: " + JSON.stringify(sub));
 const options = {};
@@ -130,6 +134,7 @@ link.click();
 const out = subRow().querySelector(".shell-balance-out");
 const balance = await until(() => out.textContent && !/checking/.test(out.textContent) ? out.textContent.trim() : null, 15000);
 if (balance !== "1000 credits (Mock Plan)") throw new Error("check balance answered " + balance);
+sameOthers("after the sign-in");
 const options = {};
 for (const id of __RECIPES__) {
     options[id] = optionOf(id);
@@ -140,6 +145,8 @@ const ed = ednow(window.__msDoc);
 const backends = host.cutoutBackends().map((b) => b.id);
 const sel = ed.cutoutSel ? Array.from(ed.cutoutSel.options).map((o) => o.value) : null;
 if (!backends.includes("magnificsub") || (sel && sel[sel.length - 1] !== "magnificsub")) throw new Error("the cutout backends: " + JSON.stringify({ backends, sel }));
+// never the default: with no free backend in this profile the list shows the "no model" entry until it is picked
+if (ed.cutoutSel && ed.cutoutSel.value !== "") throw new Error("the cutout list defaults to " + ed.cutoutSel.value);
 return { row: row.state, balance, options: options.magnificsub_creative, cutout: sel || backends };
 """
 
@@ -172,14 +179,28 @@ const ed = ednow(window.__msDoc);
 host.shell.activate(ed);
 const layer = ed.layers.find((l) => l.id === __LAYER__);
 if (!layer) throw new Error("the retouch's layer is gone");
-ed.cutoutSettings.backend = "magnificsub";
-ed.refreshCutoutBackends();
-if (ed.cutoutSel && ed.cutoutSel.value !== "magnificsub") throw new Error("the cutout select did not take magnificsub");
+// picked in the list, as a person picks it
+ed.cutoutSel.value = "magnificsub";
+ed.cutoutSel.dispatchEvent(new Event("change"));
+if (ed.cutoutSettings.backend !== "magnificsub") throw new Error("the cutout select did not take magnificsub");
 await ed.cutoutLayer(layer);
 await until(() => !ed.cutoutPending, 60000);
 await wait(300);   // the credits go on after applyCutoutImage's own line
 const m = /(\\d+)% kept/.exec(ed.status);
 return { mask: !!layer.maskPx, kept: m ? +m[1] : null, status: ed.status };
+"""
+
+NOT_PICKED = """
+const ed = ednow(window.__msDoc);
+host.shell.activate(ed);
+const layer = ed.layers.find((l) => l.id === __LAYER__);
+if (!layer) throw new Error("the retouch's layer is gone");
+ed.cutoutSettings.backend = "auto";   // nothing picked
+ed.refreshCutoutBackends();
+const shown = ed.cutoutSel ? ed.cutoutSel.value : null;
+await ed.cutoutLayer(layer);
+await wait(200);
+return { shown, pending: !!ed.cutoutPending, mask: !!layer.maskPx, status: ed.status };
 """
 
 GENERATE_NEW = """
@@ -201,6 +222,7 @@ const k = await window.scumble.keys.list();
 if ((k.keys || {}).magnificsub && k.keys.magnificsub.set) throw new Error("keys still hold magnificsub");
 const option = optionOf("magnificsub_generate");
 if (option !== __LABEL__ + " (not signed in)") throw new Error("the option after Sign out: " + option);
+sameOthers("after the sign-out");
 closeSettings();
 const backends = host.cutoutBackends().map((b) => b.id);
 if (backends.includes("magnificsub")) throw new Error("the cutout list still offers magnificsub");
@@ -298,9 +320,10 @@ async def run_all(c):
     async def ev(body, **subs):
         subs.setdefault("__LABEL__", json.dumps(LABEL))
         subs.setdefault("__RECIPES__", json.dumps(RECIPES))
+        body = PRE % body
         for k, v in subs.items():
             body = body.replace(k, v)
-        return await c.eval(PRE % body, timeout=240)
+        return await c.eval(body, timeout=240)
 
     def done(name, res):
         print("[ok] %s: %s" % (name, json.dumps(res, ensure_ascii=False)[:700]))
@@ -366,6 +389,19 @@ async def run_all(c):
             retouched["id"] = res["layer"]["id"]
             done("a_retouch_of_a_selection", {"layer": res["layer"], "status": res["status"][-120:]})
         await step("a_retouch_of_a_selection", retouch)
+
+        async def not_picked():
+            if "id" not in retouched:
+                raise Exception("no layer to cut out (the retouch failed)")
+            n0 = len(mock.calls())
+            res = await ev(NOT_PICKED, __LAYER__=json.dumps(retouched["id"]))
+            calls = mock.calls()[n0:]
+            if res["shown"] not in ("", None) or res["pending"] or res["mask"] or calls:
+                raise Exception("a cutout ran without the paid backend picked: %s, the mock saw %s" % (res, [x["tool"] for x in calls]))
+            if "No background removal model" not in res["status"] or "Or pick %s" % LABEL not in res["status"]:
+                raise Exception("the status line: %s" % res["status"])
+            done("a_cutout_click_never_spends_credits_unless_picked", {"shown": res["shown"], "status": res["status"], "requests": 0})
+        await step("a_cutout_click_never_spends_credits_unless_picked", not_picked)
 
         async def cutout():
             if "id" not in retouched:

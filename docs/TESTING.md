@@ -243,7 +243,8 @@ at it. With the base on the loopback mock the main process opens no browser: the
 `providers:status`, and the gate GETs it. In the app: every provider of main's `providers:list` has its row and all
 but this one keep their key input, Save and Clear; the row signed out ("not signed in", Sign in, the four recipes'
 options "(not signed in)"), Sign in from the row ("waiting for the browser…" with Cancel), signed in ("signed in (Mock
-Plan)", Sign out, "check balance" answering "1000 credits (Mock Plan)", the cutout list offering it last), one run
+Plan)", Sign out, "check balance" answering "1000 credits (Mock Plan)", the cutout list offering it last but not
+selecting it, the other rows unchanged before and after), a cutout click with nothing picked sending nothing, one run
 each through the window (a Creative upscale of a 160 × 120 picture, a retouch of a selection, a cutout of that layer,
 Generate new at 1:1) with "(90 credits)" in each status line and one valid creation per run at the mock, and Sign out
 from the row. It refuses a profile that holds a magnificsub sign-in and puts the settings back. Run: `bash

@@ -12264,18 +12264,25 @@ class InpaintEditor {
         if (!this.cutoutSel) return;
         const avail = availableCutoutBackends();
         const cur = this.cutoutSettings.backend;
+        // a backend that spends credits (`paid`) is never the default: it runs only once picked in this list
+        const free = avail.filter((b) => !b.paid);
         this.cutoutSel.innerHTML = "";
+        if (!free.length) { const o = document.createElement("option"); o.value = ""; o.textContent = hostText("noCutoutOption", "no model (Settings › Helpers)"); this.cutoutSel.appendChild(o); }
         for (const b of avail) { const o = document.createElement("option"); o.value = b.id; o.textContent = b.label; this.cutoutSel.appendChild(o); }
-        if (!avail.length) { const o = document.createElement("option"); o.value = ""; o.textContent = hostText("noCutoutOption", "no model (Settings › Helpers)"); this.cutoutSel.appendChild(o); }
-        this.cutoutSel.value = avail.some((b) => b.id === cur) ? cur : (avail[0] ? avail[0].id : "");
+        this.cutoutSel.value = avail.some((b) => b.id === cur) ? cur : (free[0] ? free[0].id : "");
     }
 
     /** Remove the background of a layer with an RMBG node; the result becomes its transparency mask. */
     async cutoutLayer(layer) {
         if (!layer || !layer.px) return;
         const availCut = availableCutoutBackends();
-        const backend = availCut.find((b) => b.id === this.cutoutSettings.backend) || availCut[0];
-        if (!backend) { this.setStatus(hostText("noCutoutBackend", "No background removal model: download one in Settings › Helpers, or install comfyui-rmbg on the server.")); return; }
+        // the picked backend, else the first free one: a backend that spends credits (`paid`) runs only when picked
+        const backend = availCut.find((b) => b.id === this.cutoutSettings.backend) || availCut.find((b) => !b.paid);
+        if (!backend) {
+            const paid = availCut.find((b) => b.paid);
+            this.setStatus(hostText("noCutoutBackend", "No background removal model: download one in Settings › Helpers, or install comfyui-rmbg on the server.") + (paid ? ` Or pick ${paid.label} in the cutout list (it spends credits).` : ""));
+            return;
+        }
         if (this.cutoutPending) { this.setStatus(`Still removing the background of ${this.cutoutPending.layer.name} ...`); return; }
         try {
             this.cutoutPending = { layer, backend };
@@ -12344,7 +12351,8 @@ class InpaintEditor {
             this.renderLayers();
             this.draw();
             const pct = Math.round(100 * sum / (255 * W * H));
-            this.setStatus(`${layer.name}: background removed with ${pending.backend.label}, ${pct}% kept. Enable mask editing to touch it up with P / E.`);
+            // `pending.note`: what the backend adds to the line (Magnific (subscription): the credits it used)
+            this.setStatus(`${layer.name}: background removed with ${pending.backend.label}, ${pct}% kept. Enable mask editing to touch it up with P / E.${pending.note || ""}`);
         } catch (err) {
             console.error(err);
             this.setStatus("Could not apply the cutout: " + (err.message || err));

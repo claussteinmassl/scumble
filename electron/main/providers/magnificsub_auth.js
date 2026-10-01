@@ -317,9 +317,10 @@ async function signIn(ctx) {
     const state = crypto.randomBytes(16).toString("hex");
     const wait = await listenForCode({ state, timeoutMs: ctx.timeoutMs });
     // the Settings row's Cancel: the wait for the browser ends as a cancelled sign-in (the stored one stays)
+    const onAbort = () => wait.close();
     if (ctx.signal) {
         if (ctx.signal.aborted) wait.close();
-        else ctx.signal.addEventListener("abort", () => wait.close(), { once: true });
+        else ctx.signal.addEventListener("abort", onAbort, { once: true });
     }
     const provider = new Provider({ keys: stage, server, redirect: wait.redirect, state, open: async (url) => { await ctx.openExternal(url); } });
     const connect = async () => {
@@ -344,11 +345,14 @@ async function signIn(ctx) {
         }
         const account = await accountOf(open.client);
         save(stage, { codeVerifier: undefined, account: account || undefined });
+        // a Cancel that came after the browser's code: the new sign-in is dropped, the stored one stays
+        if (ctx.signal && ctx.signal.aborted) throw new Error("Magnific (subscription): the sign-in was cancelled.");
         keys.set(NAME, stage.get(NAME));
         return status(ctx);
     } catch (err) {
         throw new Error(scrub(err && err.message || err, [...secretsOf(stage), ...secretsOf(keys)]));
     } finally {
+        if (ctx.signal) ctx.signal.removeEventListener("abort", onAbort);
         wait.close();
         if (open) await open.client.close().catch(() => {});
     }

@@ -2704,9 +2704,8 @@ export const host = {
         out.width = bmp.width; out.height = bmp.height;
         out.getContext("2d").drawImage(bmp, 0, 0);
         bmp.close();
-        // applyCutoutImage writes its own line after this returns; the credits go on afterwards (as slowHelperHint does)
-        const credits = creditsNote(backend.provider, res);
-        if (credits) setTimeout(() => editor.setStatus(editor.status + credits), 50);
+        // applyCutoutImage writes its own line after this returns and appends the pending cutout's note: the credits
+        if (editor.cutoutPending && editor.cutoutPending.layer === layer) editor.cutoutPending.note = creditsNote(backend.provider, res);
         return out;
     },
 

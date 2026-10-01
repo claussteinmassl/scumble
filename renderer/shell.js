@@ -672,6 +672,8 @@ function oauthRow(p, st) {
     if (st.pending) {
         btn.textContent = "Cancel";
         state.textContent = "waiting for the browser…";
+        // no redraw here: the Sign in click that started it still awaits the sign-in, which now ends as cancelled, and
+        // its authChanged() draws the row again
         btn.addEventListener("click", async () => { btn.disabled = true; await window.scumble.providers.cancelSignIn(p.id); });
     } else if (st.signedIn) {
         btn.textContent = "Sign out";
