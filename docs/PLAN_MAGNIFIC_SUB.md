@@ -181,3 +181,24 @@ and the gate (Task 3), and the docs (Task 4), then a live run with the user's ac
   `tools/recipes_test.js`, `tools/upscale_test.js` and the `magnific` gate (its row filter narrowed to leave the new row out).
 - Not covered: the real realm, a real run, Windows and Linux redirects (`docs/BUGS.md`).
 
+
+## Restructure: the subscription as a provider in the model recipes (2026-10-01)
+
+The user, looking at Settings › Recipes: the four "(subscription)" recipes duplicate recipes that exist ("Magnific
+Creative (subscription)" beside "Magnific Creative (upscale)"); "that should be one dropdown where you pick the
+subscription, the API or a third provider". Scumble's rule is **recipe = model, dropdown = provider**. Decided with the
+user the same day:
+
+- **Upscalers**: `magnific_creative` and `magnific_precision` get a `magnificsub` variant (the subscription's Creative
+  controls; Precision with its modes sublime / photo / denoiser / v1). `magnificsub_creative` and
+  `magnificsub_precision` go.
+- **Generate models**: every existing model recipe whose model Magnific's catalog serves **exactly** gets a
+  `magnificsub` variant, for Generate new (text) and for edits (the crop sent as a reference, as Magnific's API edit
+  routes do). A model is mapped only when the recipe's model and the catalog entry are the same model and version;
+  an ambiguous one (Magnific's "GPT 2.5" against the recipes "GPT Image 2.5 Flare" and "Sunburst") is left out, never
+  guessed. `magnificsub_generate` goes.
+- **Models only the subscription serves** (from the curated list: Auto, Ideogram 4.5 (beta), Qwen Image 3.0 Pro
+  (beta), Mystic 2.5, Recraft V4.1, unless a recipe for exactly that model exists) become model recipes of their own
+  whose dropdown holds `magnificsub` alone ("own model recipes", the user's choice).
+- **Retouch** stays the recipe `magnificsub_retouch` (Magnific's own tool with its own models).
+- A saved selection of a removed recipe id moves to the recipe that replaces it.
