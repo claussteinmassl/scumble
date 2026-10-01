@@ -95,7 +95,7 @@ lets a subscriber run Magnific from Scumble without an API plan.
   (sharpness, grain, ultra detail, preset), the prompt for Creative.
 - `recipes/magnificsub_retouch.json` (input fill): Mode (replace, erase); Model: Auto, Classic, Erase, Google Nano
   Banana Pro (`retouch-imagen-nano-banana-2`), Google Nano Banana 2 (`retouch-imagen-nano-banana-2-flash`);
-  Resolution where the model has one. No beta or private models.
+  Resolution where the model has one. Models the account's catalog lists are offered; beta or private ones are marked "(beta)" and confirmed by a live run.
 - `recipes/magnificsub_generate.json` (Generate new, with reference layers): Model: Auto, Flux.2 Pro, Flux.2 Max,
   GPT 2, GPT 2.5, Google Nano Banana Pro, Google Nano Banana 2, Seedream 5 Pro, Ideogram 4.5, Mystic 2.5, Recraft
   V4.1, Qwen Image 3.0 Pro; aspect ratio from the model's list.
