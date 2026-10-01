@@ -577,15 +577,6 @@ function buildMenu() {
     };
     const template = [
         ...(isMac ? [{ role: "appMenu" }] : []),
-        // macOS: text fields undo, cut, copy, paste and select all through the Edit menu's roles only (on Windows and
-        // Linux Chromium does it itself), so the Mac needs this menu. The roles keep their accelerators: Chromium hands a
-        // Cmd key to the page before the menu (RenderWidgetHostViewCocoa performKeyEquivalent) and passes it on to the
-        // menu only when the page left it unhandled. So on the canvas the editor keeps Cmd+Z / Shift+Z / C / V / X
-        // (inpaint_canvas.js onKey calls preventDefault: layer undo, pixel copy and paste, no second paste event from
-        // the role), and in a text field, where the editor lets the key go, the role does the text action. The editor
-        // has no Cmd+A of its own, so Select All is the shell's (renderer/shell.js selectAllFromMenu): the text of the
-        // focused field, else the whole picture as a selection, where the role would select the page's text
-        ...(isMac ? [{ label: "Edit", submenu: [{ role: "undo" }, { role: "redo" }, { type: "separator" }, { role: "cut" }, { role: "copy" }, { role: "paste" }, { label: "Select All", accelerator: "CmdOrCtrl+A", click: () => send("menu", "select-all") }] }] : []),
         {
             label: "&File",
             submenu: [
@@ -613,6 +604,15 @@ function buildMenu() {
                 isMac ? { role: "close" } : { role: "quit" },
             ],
         },
+        // macOS: text fields undo, cut, copy, paste and select all through the Edit menu's roles only (on Windows and
+        // Linux Chromium does it itself), so the Mac needs this menu. The roles keep their accelerators: Chromium hands a
+        // Cmd key to the page before the menu (RenderWidgetHostViewCocoa performKeyEquivalent) and passes it on to the
+        // menu only when the page left it unhandled. So on the canvas the editor keeps Cmd+Z / Shift+Z / C / V / X
+        // (inpaint_canvas.js onKey calls preventDefault: layer undo, pixel copy and paste, no second paste event from
+        // the role), and in a text field, where the editor lets the key go, the role does the text action. The editor
+        // has no Cmd+A of its own, so Select All is the shell's (renderer/shell.js selectAllFromMenu): the text of the
+        // focused field, else the whole picture as a selection, where the role would select the page's text
+        ...(isMac ? [{ label: "Edit", submenu: [{ role: "undo" }, { role: "redo" }, { type: "separator" }, { role: "cut" }, { role: "copy" }, { role: "paste" }, { label: "Select All", accelerator: "CmdOrCtrl+A", click: () => send("menu", "select-all") }] }] : []),
         {
             // the whole picture turned or mirrored, every layer with it (PLAN_0_1_31 §7); no accelerators: the editor
             // takes Ctrl+I and Ctrl+C before a menu could
