@@ -21,14 +21,12 @@
               "Flux.2 Pro",
               "Flux.2 Max",
               "GPT 2",
-              "GPT 2.5",
+              "GPT 2.5 (beta)",
               "Google Nano Banana Pro",
               "Google Nano Banana 2",
               "Seedream 5 Pro",
-              "Ideogram 4.5",
               "Mystic 2.5",
-              "Recraft V4.1",
-              "Qwen Image 3.0 Pro"
+              "Recraft V4.1"
             ],
             {
               "default": "Auto"
@@ -46,7 +44,7 @@
           "max": 12
         }
       },
-      "note": "Runs on your Magnific plan (Premium, Premium+ or Pro) through Magnific's MCP server (mcp.magnific.com), after signing in under Settings › API providers; each run spends the plan's credits, the same balance as Magnific's web app, and the status line says how many. The pictures are uploaded to Magnific (Freepik Company S.L., Málaga, Spain) as hidden uploads; the results are Magnific creations and show in your Magnific library. Not run against the live service yet. Generate new only: a new base image from the prompt and the shown reference layers (at most 12, named in the prompt as image 1, image 2, ...; Mystic 2.5 and Recraft V4.1 take them as style pictures, which the prompt cannot name). The aspect ratio is the model's closest to the asked size; the model picks the pixel size. Auto lets Magnific pick the model."
+      "note": "Runs on your Magnific plan (Premium, Premium+ or Pro) through Magnific's MCP server (mcp.magnific.com), after signing in under Settings › API providers; each run spends the plan's credits, the same balance as Magnific's web app, and the status line says how many. The pictures are uploaded to Magnific (Freepik Company S.L., Málaga, Spain) as hidden uploads; the results are Magnific creations and show in your Magnific library. Not run against the live service yet. Generate new only: a new base image from the prompt and the shown reference layers (at most 12, named in the prompt as image 1, image 2, ...; Mystic 2.5 and Recraft V4.1 take them as style pictures, which the prompt cannot name). The aspect ratio is the model's closest to the asked size; the model picks the pixel size. Auto lets Magnific pick the model. A model Magnific marks as beta says so in its name; private models are left out."
     }
   }
 }

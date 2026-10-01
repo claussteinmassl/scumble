@@ -549,95 +549,130 @@ async function main() {
 
         await section("18. upscale", async () => {
             let c0 = mock.calls.length;
-            const out = await sub.upscale({ kind: "upscale", model: "images_upscale", image: pngBytes(300, "UPSCALE-SRC"), factor: 2, prompt: "crisp bark", params: {} }, vctx);
+            const out = await sub.upscale({ kind: "upscale", model: "images_upscale:creative", image: pngBytes(300, "UPSCALE-SRC"), factor: 2, prompt: "crisp bark", params: {} }, vctx);
             const c = toolCalls(c0);
             const up = c.find((x) => x.tool === "images_upscale");
             check("one upload, images_upscale, the wait and the original's download, every call valid", eq(toolsOf(c0), ["creations_request_upload", "creations_finalize_upload", "images_upscale", "creations_wait", "creations_register_download"]) && !invalid(c0).length, short(toolsOf(c0)) + " " + invalid(c0).join(" | "));
-            check("no rows set (Creative, no preset): mode, scale \"2x\", Optimized for, Engine and the prompt; empty sliders stay out (the server's defaults)",
-                up && mock.creations.get(up.args.creationIdentifier).fileName === "scumble.png" && eq(up.args, { creationIdentifier: up.args.creationIdentifier, mode: "creative", scale: "2x", optimised: "StandardUltra", engine: "automatic", prompt: "crisp bark" }), short(up && up.args));
+            check("Creative with no rows set: the preset Subtle, Optimized for, Engine and the prompt; no sliders",
+                up && mock.creations.get(up.args.creationIdentifier).fileName === "scumble.png" && eq(up.args, { creationIdentifier: up.args.creationIdentifier, mode: "creative", scale: "2x", presets: "subtle", optimised: "StandardUltra", engine: "automatic", prompt: "crisp bark" }), short(up && up.args));
             check("the answer: the original's bytes, PNG, its size, the credits and the mode", out.mime === "image/png" && out.width === 64 && out.height === 48 && eq(out.info, { credits: 90, model: "creative", factor: "2x" })
                 && out.bytes.toString("latin1", 33, 39) === "RESULT", short({ ...out, bytes: out.bytes.length }));
 
             // a factor the mode does not take: refused before the upload, naming the factors it takes
             const before = { calls: mock.calls.length, http: mock.http.length };
-            const e = await throws(() => sub.upscale({ kind: "upscale", image: pngBytes(300, "X"), factor: 4, params: { mode: "Precision photo" } }, vctx));
+            const e = await throws(() => sub.upscale({ kind: "upscale", model: "images_upscale:precision", image: pngBytes(300, "X"), factor: 4, params: { mode: "Precision photo" } }, vctx));
             check("Precision photo at 4x is refused before anything is sent, naming its factors", e === "Magnific (subscription): Precision photo upscales by 2x only, not 4x." && mock.calls.length === before.calls && mock.http.length === before.http, e);
-            const refusals = ["Precision photo denoiser", "Precision v1"].map((mode) => [4, 8, 16].every((f) => { try { sub._upscaleArgs({ factor: f, params: { mode } }); return false; } catch (_) { return true; } }));
-            const allow = ["Creative", "Precision sublime"].every((mode) => [2, 4, 8, 16].every((f) => sub._upscaleArgs({ factor: f, params: { mode } }).scale === `${f}x`));
-            check("ultra-denoiser and ultra refuse 4, 8 and 16 too; creative and ultra-sublime take 2, 4, 8 and 16", refusals.every(Boolean) && allow);
+            const refuses = (mode) => [4, 8, 16].every((f) => { try { sub._upscaleArgs({ model: "images_upscale:precision", factor: f, params: { mode } }); return false; } catch (_) { return true; } });
+            const takes = (model, mode) => [2, 4, 8, 16].every((f) => sub._upscaleArgs({ model, factor: f, params: { mode } }).scale === `${f}x`);
+            check("ultra-photo, ultra-denoiser and ultra refuse 4, 8 and 16; creative and ultra-sublime take 2, 4, 8 and 16",
+                ["Precision photo", "Precision photo denoiser", "Precision v1"].every(refuses) && takes("images_upscale:creative", undefined) && takes("images_upscale:precision", "Precision sublime"));
 
             // every mode sends only the keys its catalog entry lists (catalog_images_upscale_modes_list.txt)
             const cat = fs.readFileSync(path.join(__dirname, "refs", "magnificsub", "catalog_images_upscale_modes_list.txt"), "utf8");
             const optional = {};
             for (const m of cat.matchAll(/- id: ([\w-]+)[\s\S]*?optional\[\d+\]: ([\w,]+)/g)) optional[m[1]] = m[2].split(",");
+            const T = sub._tables;
+            const schema = mockLib.toolDefs().find((d) => d.name === "images_upscale").inputSchema;
             const bad = [];
-            for (const [label, mode] of Object.entries(sub._tables.UPSCALE_MODES)) {
+            for (const [label, mode] of Object.entries(T.UPSCALE_MODES)) {
                 if (!optional[mode.slug]) { bad.push(`${label}: ${mode.slug} not in the catalog`); continue; }
-                for (const preset of Object.keys(sub._tables.UPSCALE_PRESETS)) {
-                    let a;
-                    try { a = sub._upscaleArgs({ factor: 2, prompt: "p", params: { mode: label, preset, creativity: 1, resemblance: 1, sharpness: 5, grain: 5 } }); } catch (_) { continue; }
+                const presets = mode.kind === "creative" ? Object.keys(T.CREATIVE_PRESETS) : Object.keys(T.PRECISION_PRESETS);
+                for (const preset of presets) {
+                    const a = sub._upscaleArgs({ model: `images_upscale:${mode.kind}`, factor: 2, prompt: "p", params: { mode: label, preset, precisionPreset: preset, creativity: 1, resemblance: 1, hdr: 1, fractality: 1, sharpness: 5, grain: 5, ultraDetail: 5 } });
                     for (const k of Object.keys(a)) if (k !== "mode" && !optional[mode.slug].includes(k)) bad.push(`${label}/${preset}: ${k}`);
-                    const v = mockLib.validate(mockLib.toolDefs().find((d) => d.name === "images_upscale").inputSchema, { creationIdentifier: "x", ...a });
+                    const v = mockLib.validate(schema, { creationIdentifier: "x", ...a });
                     if (v.length) bad.push(`${label}/${preset}: ${v.join("; ")}`);
                 }
             }
             check("every mode and preset sends only the keys the mode's catalog entry lists, valid against the schema", !bad.length, bad.join(" | "));
-            const sublime = sub._upscaleArgs({ factor: 8, prompt: "ignored", params: { mode: "Precision sublime", preset: "Portraits", sharpness: 50 } });
-            const photo = sub._upscaleArgs({ factor: 2, params: { mode: "ultra-photo", sharpness: 12, grain: 9 } });
-            const vivid = sub._upscaleArgs({ factor: 16, params: { mode: "Creative", preset: "Vivid", creativity: 9, optimised: "3D renders", engine: "Sparkle" } });
-            check("a preset goes alone (no sliders), the sliders only without one; a precision mode sends no prompt",
-                eq(sublime, { mode: "ultra-sublime", scale: "8x", precisionPreset: "portraits" }) && eq(photo, { mode: "ultra-photo", scale: "2x", sharpness: 12, grain: 9 })
-                && eq(vivid, { mode: "creative", scale: "16x", presets: "vivid", optimised: "ThreeDRenders", engine: "magnific_sparkle" }), short([sublime, photo, vivid]));
-            const e2 = await throws(() => sub.upscale({ image: pngBytes(100, "X"), factor: 2, params: { mode: "Precision photo", preset: "Vivid" } }, vctx));
-            const e3 = await throws(() => sub.upscale({ image: pngBytes(100, "X"), factor: 2, params: { mode: "Creative", creativity: 11 } }, vctx));
-            const e4 = await throws(() => sub.upscale({ image: pngBytes(100, "X"), factor: 2, params: { mode: "Turbo" } }, vctx));
-            check("a preset of the other kind, a slider out of range and an unknown mode are refused before the upload",
-                /the preset Vivid is for the Creative modes; Precision photo takes None \(sliders\), Balanced, Portraits and Grainy analog/.test(e2 || "") && /creativity goes from -10 to 10, not 11/.test(e3 || "") && /no upscale mode "Turbo"/.test(e4 || "") && mock.calls.length === before.calls, [e2, e3, e4].join(" | "));
+            const custom = sub._upscaleArgs({ model: "images_upscale:creative", factor: 4, params: { preset: "Custom (sliders)", creativity: 5, resemblance: -2, hdr: 3, fractality: -4 } });
+            const vivid = sub._upscaleArgs({ model: "images_upscale:creative", factor: 16, params: { preset: "Vivid", creativity: 9, optimised: "3D renders", engine: "Sparkle" } });
+            const sublime = sub._upscaleArgs({ model: "images_upscale:precision", factor: 8, prompt: "ignored", params: { mode: "Precision sublime", precisionPreset: "Portraits", sharpness: 50 } });
+            const sliders = sub._upscaleArgs({ model: "images_upscale:precision", factor: 2, params: { mode: "Precision sublime", sharpness: 12, grain: 9, ultraDetail: 30 } });
+            const photo = sub._upscaleArgs({ model: "images_upscale:precision", factor: 2, params: { mode: "ultra-photo", sharpness: 12, grain: 9, ultraDetail: 30 } });
+            check("Creative: Custom sends presets \"custom\" with all four sliders, a named preset goes without them",
+                eq(custom, { mode: "creative", scale: "4x", presets: "custom", creativity: 5, resemblance: -2, hdr: 3, fractality: -4, optimised: "StandardUltra", engine: "automatic" })
+                && eq(vivid, { mode: "creative", scale: "16x", presets: "vivid", optimised: "ThreeDRenders", engine: "magnific_sparkle" }), short([custom, vivid]));
+            check("Precision: a macro goes alone, the sliders without one, no Ultra detail for sublime, never a prompt",
+                eq(sublime, { mode: "ultra-sublime", scale: "8x", precisionPreset: "portraits" }) && eq(sliders, { mode: "ultra-sublime", scale: "2x", sharpness: 12, grain: 9 })
+                && eq(photo, { mode: "ultra-photo", scale: "2x", sharpness: 12, grain: 9, ultraDetail: 30 }), short([sublime, sliders, photo]));
+            const e2 = await throws(() => sub.upscale({ model: "images_upscale:precision", image: pngBytes(100, "X"), factor: 2, params: { mode: "Creative" } }, vctx));
+            const e3 = await throws(() => sub.upscale({ model: "images_upscale:creative", image: pngBytes(100, "X"), factor: 2, params: { preset: "Custom (sliders)", hdr: 11 } }, vctx));
+            const e4 = await throws(() => sub.upscale({ model: "images_upscale:precision", image: pngBytes(100, "X"), factor: 2, params: { mode: "Turbo" } }, vctx));
+            const e5 = await throws(() => sub.upscale({ model: "images_upscale:precision", image: pngBytes(100, "X"), factor: 2, params: { precisionPreset: "Vivid" } }, vctx));
+            check("refused before the upload: a Creative mode on the Precision recipe, a slider out of range, an unknown mode, a Creative preset as a Precision macro",
+                /Creative is not a Precision mode/.test(e2 || "") && /hdr goes from -10 to 10, not 11/.test(e3 || "") && /no upscale mode "Turbo"/.test(e4 || "") && /no Precision preset "Vivid"/.test(e5 || "") && mock.calls.length === before.calls, [e2, e3, e4, e5].join(" | "));
         });
 
         await section("19. retouch (edit, kind fill)", async () => {
-            const W = 3000, H = 1000;
-            const image = codec.fromBitmap(greyOf(W, H, (x, y) => (x + y) & 255));
-            const mask = codec.fromBitmap(greyOf(W, H, (x, y) => (x >= 1500 && x < 2400 && y >= 300 && y < 700 ? 200 : 40)));
-            let c0 = mock.calls.length;
-            const out = await sub.edit({ kind: "fill", model: "images_retouch", prompt: "a red door", image, mask, references: [], params: {} }, vctx);
-            const c = toolCalls(c0);
-            const rt = c.find((x) => x.tool === "images_retouch");
+            const P = sub._pictures;
+            // the answer Magnific gives: a picture of the size asked, or twice it; values from the position
+            const answerOf = (w, h) => codec.fromBitmap(greyOf(w, h, (x, y) => (x * 3 + y * 5) & 255));
+
+            // 1001 x 999: within 2048, so it goes 1:1, padded to 1008 x 1000
+            const W = 1001, H = 999;
+            const image = codec.fromBitmap(greyOf(W, H, (x, y) => (x * 7 + y * 13) & 255));
+            const mask = codec.fromBitmap(greyOf(W, H, (x, y) => (x >= 400 && x < 700 && y >= 300 && y < 600 ? 200 : 40)));
+            mock.script.result = answerOf(1008, 1000);
+            let c0 = mock.calls.length, out;
+            try { out = await sub.edit({ kind: "fill", model: "images_retouch", prompt: "a red door", image, mask, references: [], params: {} }, vctx); } finally { mock.script.result = null; }
+            const rt = toolCalls(c0).find((x) => x.tool === "images_retouch");
             check("two uploads, then images_retouch {creationIdentifier, maskCreationIdentifier, mode, prompt}, every call valid",
                 eq(toolsOf(c0), ["creations_request_upload", "creations_finalize_upload", "creations_request_upload", "creations_finalize_upload", "images_retouch", "creations_wait", "creations_register_download"])
                 && !invalid(c0).length && rt && eq(Object.keys(rt.args), ["creationIdentifier", "maskCreationIdentifier", "mode", "prompt"]) && rt.args.mode === "replace" && rt.args.prompt === "a red door", short(rt && rt.args));
             const sent = codec.bitmap(mock.creations.get(rt.args.creationIdentifier).bytes);
             const sentMask = codec.bitmap(mock.creations.get(rt.args.maskCreationIdentifier).bytes);
-            check("a 3000 x 1000 crop goes as 2048 x 680 (long edge 2048, multiples of 8), the mask at the same size", sent && sentMask && sent.width === 2048 && sent.height === 680 && sentMask.width === 2048 && sentMask.height === 680,
-                sent && `${sent.width}x${sent.height}, mask ${sentMask && sentMask.width}x${sentMask && sentMask.height}`);
-            let binary = true, outside = 0;
-            for (let y = 0; y < 680; y++) for (let x = 0; x < 2048; x++) {
-                const v = sentMask.data[(y * 2048 + x) * 4];
-                if (v !== 0 && v !== 255) binary = false;
-                const sx = (x + 0.5) * W / 2048, sy = (y + 0.5) * H / 680;
-                const want = sx >= 1500 && sx < 2400 && sy >= 300 && sy < 700 ? 255 : 0;
-                if (v !== want) outside++;
+            const src = codec.bitmap(image);
+            let same = true, edge = true, maskOk = true;
+            for (let y = 0; y < 1000; y++) for (let x = 0; x < 1008; x++) {
+                const j = (y * 1008 + x) * 4;
+                const sj = (Math.min(y, H - 1) * W + Math.min(x, W - 1)) * 4;
+                if (x < W && y < H) { if (sent.data[j] !== src.data[sj] || sent.data[j + 3] !== 255) same = false; }
+                else if (sent.data[j] !== src.data[sj]) edge = false;
+                const want = x < W && y < H && x >= 400 && x < 700 && y >= 300 && y < 600 ? 255 : 0;
+                if (sentMask.data[j] !== want || sentMask.data[j + 3] !== 255) maskOk = false;
             }
-            check("the mask stays black and white (thresholded at 128) and keeps the selection's place", binary && outside === 0, `${outside} pixels off, binary ${binary}`);
-            const corner = sent.data.slice(0, 4);
-            check("the picture is the area average (opaque stays opaque)", corner[3] === 255 && Math.abs(corner[0] - 1) <= 1, short([...corner]));
-            check("the answer comes back at its own size, with the credits", out.width === 64 && out.height === 48 && out.info.credits === 90 && out.info.model === "auto" && eq(out.info.sent, [2048, 680]), short(out.info));
+            check("1001 x 999 goes as 1008 x 1000: the crop's pixels 1:1, the padding repeats the edge", sent.width === 1008 && sent.height === 1000 && same && edge, `${sent.width}x${sent.height} same ${same} edge ${edge}`);
+            check("the mask: the same size, black and white only, the selection in place, the padding black (keep)", sentMask.width === 1008 && sentMask.height === 1000 && maskOk);
+            const back = codec.bitmap(out.bytes), ans = codec.bitmap(answerOf(1008, 1000));
+            let crop = !!back && back.width === W && back.height === H;
+            for (let y = 0; crop && y < H; y++) if (Buffer.compare(back.data.subarray(y * W * 4, (y + 1) * W * 4), ans.data.subarray(y * 1008 * 4, y * 1008 * 4 + W * 4)) !== 0) crop = false;
+            check("the answer is cut back to 1001 x 999, pixel for pixel; the credits and the size sent in info", crop && out.width === W && out.height === H && out.info.credits === 90 && eq(out.info.sent, [1008, 1000]), short(out.info));
 
-            // a picture already at its size goes as it is
+            // Magnific answering at twice the size: the picture's part, scaled to the crop
+            mock.script.result = answerOf(2016, 2000);
+            try { out = await sub.edit({ kind: "fill", prompt: "x", image, mask, params: {} }, vctx); } finally { mock.script.result = null; }
+            check("an answer at another resolution is cut in proportion and scaled to the crop", out.width === W && out.height === H && codec.bitmap(out.bytes).width === W);
+
+            // 3000 x 1000: scaled to 2048 x 683 (aspect kept), padded to 2048 x 688, the answer back at 3000 x 1000
+            const big = codec.fromBitmap(greyOf(3000, 1000, (x, y) => (x + y) & 255));
+            const bigMask = codec.fromBitmap(greyOf(3000, 1000, (x) => (x >= 1500 ? 255 : 0)));
+            mock.script.result = answerOf(2048, 688);
+            c0 = mock.calls.length;
+            try { out = await sub.edit({ kind: "fill", prompt: "x", image: big, mask: bigMask, params: {} }, vctx); } finally { mock.script.result = null; }
+            const rt2 = toolCalls(c0).find((x) => x.tool === "images_retouch");
+            const s2 = codec.bitmap(mock.creations.get(rt2.args.creationIdentifier).bytes), m2 = codec.bitmap(mock.creations.get(rt2.args.maskCreationIdentifier).bytes);
+            check("3000 x 1000 goes as 2048 x 688 (scaled to 2048 x 683, padded), the mask the same; the answer comes back at 3000 x 1000",
+                s2.width === 2048 && s2.height === 688 && m2.width === 2048 && m2.height === 688 && m2.data[(687 * 2048 + 2047) * 4] === 0 && m2.data[(682 * 2048 + 2047) * 4] === 255 && out.width === 3000 && out.height === 1000, `${s2.width}x${s2.height} -> ${out.width}x${out.height}`);
+            const geo = [[3000, 1000], [1001, 999], [2048, 2048], [100, 5000], [5, 5], [800, 600]].map(([w, h]) => { const g = P.retouchGeometry(w, h); return [g.width, g.height, g.padWidth, g.padHeight]; });
+            check("the geometry: 3000x1000 -> 2048x683 in 2048x688, 1001x999 1:1 in 1008x1000, 2048 as it is, 100x5000 -> 41x2048 in 48x2048, 5x5 in 8x8",
+                eq(geo, [[2048, 683, 2048, 688], [1001, 999, 1008, 1000], [2048, 2048, 2048, 2048], [41, 2048, 48, 2048], [5, 5, 8, 8], [800, 600, 800, 600]]), short(geo));
+
+            // a picture already at its size goes as it is, and the answer as it came
             const small = codec.fromBitmap(greyOf(800, 600, (x) => x & 255));
             c0 = mock.calls.length;
-            await sub.edit({ kind: "fill", prompt: "sky", image: small, mask: codec.fromBitmap(greyOf(800, 600, () => 255)), params: { mode: "Replace", model: "Google Nano Banana Pro", resolution: "4k" } }, vctx);
-            const rt2 = toolCalls(c0).find((x) => x.tool === "images_retouch");
-            check("800 x 600 is sent unchanged; Nano Banana Pro at 4k sends its slug and the resolution", Buffer.compare(mock.creations.get(rt2.args.creationIdentifier).bytes, small) === 0
-                && rt2.args.model === "retouch-imagen-nano-banana-2" && rt2.args.resolution === "4k" && !invalid(c0).length, short(rt2.args));
-            const sz = [[3000, 1000], [1001, 999], [2048, 2048], [100, 5000], [5, 5]].map(([w, h]) => sub._retouchSize(w, h));
-            check("the size rule: 2048x680, 1000x992, 2048x2048, 40x2048, 8x8", eq(sz, [[2048, 680], [1000, 992], [2048, 2048], [40, 2048], [8, 8]]), short(sz));
+            out = await sub.edit({ kind: "fill", prompt: "sky", image: small, mask: codec.fromBitmap(greyOf(800, 600, () => 255)), params: { mode: "Replace", model: "Google Nano Banana Pro", resolution: "4k" } }, vctx);
+            const rt3 = toolCalls(c0).find((x) => x.tool === "images_retouch");
+            check("800 x 600 is sent unchanged; Nano Banana Pro at 4k sends its slug and the resolution", Buffer.compare(mock.creations.get(rt3.args.creationIdentifier).bytes, small) === 0
+                && rt3.args.model === "retouch-imagen-nano-banana-2" && rt3.args.resolution === "4k" && !invalid(c0).length, short(rt3.args));
+            const e0 = await throws(() => sub.edit({ kind: "fill", prompt: "sky", image: codec.fromBitmap(greyOf(801, 600, () => 9)), mask: codec.fromBitmap(greyOf(801, 600, () => 255)), params: {} }, vctx));
+            check("an answer of another size that cannot be read is refused in words (not stitched blind)", /the retouched picture could not be read/.test(e0 || ""), e0);
 
             // erase: no prompt; the model Erase by its slug
             c0 = mock.calls.length;
             await sub.edit({ kind: "fill", prompt: "ignored for erase", image: small, mask: small, params: { mode: "Erase", model: "Erase" } }, vctx);
-            const rt3 = toolCalls(c0).find((x) => x.tool === "images_retouch");
-            check("Erase sends no prompt; the model Erase goes as retouch-erase", rt3 && !("prompt" in rt3.args) && rt3.args.mode === "erase" && rt3.args.model === "retouch-erase" && !invalid(c0).length, short(rt3 && rt3.args));
+            const rt4 = toolCalls(c0).find((x) => x.tool === "images_retouch");
+            check("Erase sends no prompt; the model Erase goes as retouch-erase", rt4 && !("prompt" in rt4.args) && rt4.args.mode === "erase" && rt4.args.model === "retouch-erase" && !invalid(c0).length, short(rt4 && rt4.args));
 
             // refusals before any upload
             const before = { calls: mock.calls.length, http: mock.http.length };
@@ -654,6 +689,10 @@ async function main() {
                 && /the model Auto takes no resolution/.test(errs[3] || "") && /needs the selection as a mask/.test(errs[4] || "") && mock.calls.length === before.calls && mock.http.length === before.http, errs.join(" | "));
             const lay = sub.layout({ kind: "fill", references: [Buffer.from([1])], original: 0 });
             check("the layout: the crop and the mask; reference layers are dropped (a note says so)", lay.pictures.length === 2 && lay.pictures[0].role === "crop" && lay.pictures[1].role === "mask" && lay.pictures[1].n === null && /alone/.test(lay.drops || ""), short(lay));
+
+            // the size of an answer that is no PNG: from a JPEG's header
+            const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 4, 0, 0, 0xff, 0xc0, 0, 17, 8, 0x01, 0xf4, 0x02, 0x80, 3, 1, 0x22, 0, 2, 0x11, 1, 3, 0x11, 1]);
+            check("imageSize reads a JPEG's SOF (640 x 500) and a PNG's IHDR", eq(P.imageSize(jpeg), [640, 500]) && eq(P.imageSize(answerOf(7, 3)), [7, 3]) && P.imageSize(Buffer.from("not a picture at all, no")) === null);
         });
 
         await section("20. generate (kind text)", async () => {
@@ -707,7 +746,9 @@ async function main() {
             for (const [label, m] of Object.entries(sub._tables.GENERATE_MODELS)) {
                 const e = models.get(m.slug);
                 if (!e) { bad.push(`${label}: ${m.slug} not in the catalog`); continue; }
-                if (e.name !== label) bad.push(`${label}: the catalog calls ${m.slug} "${e.name}"`);
+                // private models are left out; beta models are marked (beta), with the catalog's own name
+                if (e.private) bad.push(`${label}: ${m.slug} is private`);
+                if (`${e.name}${e.beta ? " (beta)" : ""}` !== label) bad.push(`${label}: the catalog calls ${m.slug} "${e.name}"${e.beta ? " (beta)" : ""}`);
                 if (!eq(e.aspects.filter((x) => x !== "auto"), m.aspects)) bad.push(`${label}: aspects ${m.aspects} vs ${e.aspects}`);
                 if (!e.refTypes.includes(m.ref) || (m.ref === "style" && e.refTypes.includes("image"))) bad.push(`${label}: reference type ${m.ref} vs ${e.refTypes}`);
             }
@@ -716,13 +757,17 @@ async function main() {
                 const e = retouch.get(m.slug || "retouch-auto");
                 if (!e) { bad.push(`retouch ${label}: not in the catalog`); continue; }
                 if (e.name !== label) bad.push(`retouch ${label}: the catalog calls it "${e.name}"`);
-                if (e.beta || e.private) bad.push(`retouch ${label}: beta or private`);
+                if (e.private) bad.push(`retouch ${label}: private`);
+                if (e.beta) bad.push(`retouch ${label}: beta, and not in the spec's list`);
                 if (!eq(e.modes, m.modes)) bad.push(`retouch ${label}: modes ${m.modes} vs ${e.modes}`);
                 if (!eq(e.resolutions, m.resolutions || [])) bad.push(`retouch ${label}: resolutions ${m.resolutions} vs ${e.resolutions}`);
             }
-            check("every generate and retouch entry has the catalog's name, slug, aspects, modes and resolutions (retouch: no beta or private model)", !bad.length, bad.join(" | "));
-            const spec = ["Auto", "Flux.2 Pro", "Flux.2 Max", "GPT 2", "GPT 2.5", "Google Nano Banana Pro", "Google Nano Banana 2", "Seedream 5 Pro", "Ideogram 4.5", "Mystic 2.5", "Recraft V4.1", "Qwen Image 3.0 Pro"];
-            check("the generate list is the spec's, in its order", eq(Object.keys(sub._tables.GENERATE_MODELS), spec) && eq(Object.keys(sub._tables.RETOUCH_MODELS), ["Auto", "Classic", "Erase", "Google Nano Banana Pro", "Google Nano Banana 2"]));
+            check("every generate and retouch entry has the catalog's name (\" (beta)\" for a beta model), slug, aspects, modes and resolutions; no private model", !bad.length, bad.join(" | "));
+            // the spec's list without its two private models (Ideogram 4.5, Qwen Image 3.0 Pro), GPT 2.5 marked beta
+            const spec = ["Auto", "Flux.2 Pro", "Flux.2 Max", "GPT 2", "GPT 2.5 (beta)", "Google Nano Banana Pro", "Google Nano Banana 2", "Seedream 5 Pro", "Mystic 2.5", "Recraft V4.1"];
+            const privateOnes = ["ideogram-4-5", "qwen-image-3-0-pro"].map((x) => models.get(x));
+            check("Ideogram 4.5 and Qwen Image 3.0 Pro are private in the catalog (so left out), GPT 2.5 beta only", privateOnes.every((e) => e && e.private) && models.get("gpt-2-mini").beta && !models.get("gpt-2-mini").private);
+            check("the generate list is the spec's less the private models, in its order", eq(Object.keys(sub._tables.GENERATE_MODELS), spec) && eq(Object.keys(sub._tables.RETOUCH_MODELS), ["Auto", "Classic", "Erase", "Google Nano Banana Pro", "Google Nano Banana 2"]));
             const schemaAspects = mockLib.toolDefs().find((d) => d.name === "images_generate").inputSchema.properties.aspectRatio.enum;
             check("the aspects images_generate takes are its schema's enum", eq([...sub._tables.GENERATE_ASPECTS].sort(), [...schemaAspects].sort()));
         });
@@ -742,6 +787,9 @@ async function main() {
             check("no codec: refused in words before the upload", /cannot read the cut-out/.test(e || ""), e);
 
             check("balance: \"<available> credits (<plan>)\" from account_balance", await sub.balance(vctx) === "1000 credits (Mock Plan)");
+            const old = fakeKeys();
+            old.set("magnificsub", JSON.stringify({ ...JSON.parse(vk.data.magnificsub), tokenOrigin: undefined }));
+            check("ready: a sign-in stored without its token endpoint (before the pin) -> sign in again", eq(sub.ready({ keys: old, settings }), { ok: false, reason: auth.RESIGN }) && sub.status({ keys: old, settings }).signedIn === true);
             check("ready: signed in -> ok; signed out -> the sign-in sentence", eq(sub.ready({ keys: vk, settings }), { ok: true }) && eq(sub.ready({ keys: fakeKeys(), settings }), { ok: false, reason: "Sign in to Magnific (subscription) first: Settings › API providers." }));
             const e2 = await throws(() => sub.balance({ keys: fakeKeys(), settings, fetch: rec }));
             check("a verb while signed out says to sign in, nothing sent", e2 === auth.NOT_SIGNED_IN, e2);
@@ -804,7 +852,7 @@ async function main() {
             }
         });
 
-        await section("24. the three recipes", async () => {
+        await section("24. the four recipes", async () => {
             const origLoad = Module._load;
             Module._load = function (request, ...rest) {
                 if (request === "electron") return { app: { getPath: () => os.tmpdir() } };
@@ -814,24 +862,34 @@ async function main() {
             try { recipes = require(path.join(ROOT, "electron", "main", "recipes.js")); } finally { Module._load = origLoad; }
             const raw = (id) => JSON.parse(fs.readFileSync(path.join(ROOT, "recipes", id + ".json"), "utf8"));
             const norm = (id) => recipes._normalize(raw(id));
-            const up = norm("magnificsub_upscale"), rt = norm("magnificsub_retouch"), gen = norm("magnificsub_generate");
-            const vu = up.providers.magnificsub, vr = rt.providers.magnificsub, vg = gen.providers.magnificsub;
-            check("all three have magnificsub as their only provider and default", [up, rt, gen].every((r) => r.default === "magnificsub" && eq(r.providerIds, ["magnificsub"])));
-            check("the descriptions and notes say they run on the plan's credits after signing in", [up, rt, gen].every((r) => /Magnific plan's credits, after signing in under Settings › API providers/.test(r.description) && /signing in under Settings › API providers; each run spends the plan's credits/.test(r.providers.magnificsub.note)));
-            check("upscale: task upscale, factor 2/4/8/16, the prompt goes along", up.task === "upscale" && eq(vu.factor.steps, [2, 4, 8, 16]) && vu.factor.default === 2 && vu.usesPrompt === true && vu.text === null);
+            const cr = norm("magnificsub_creative"), pr = norm("magnificsub_precision"), rt = norm("magnificsub_retouch"), gen = norm("magnificsub_generate");
+            const all = [cr, pr, rt, gen];
+            const vc = cr.providers.magnificsub, vp = pr.providers.magnificsub, vr = rt.providers.magnificsub, vg = gen.providers.magnificsub;
+            check("the four recipes (no magnificsub_upscale any more) have magnificsub as their only provider and default", !fs.existsSync(path.join(ROOT, "recipes", "magnificsub_upscale.json"))
+                && all.every((r) => r.default === "magnificsub" && eq(r.providerIds, ["magnificsub"])));
+            check("the descriptions and notes say they run on the plan's credits after signing in", all.every((r) => /Magnific plan's credits, after signing in under Settings › API providers/.test(r.description) && /signing in under Settings › API providers; each run spends the plan's credits/.test(r.providers.magnificsub.note)));
+            check("Creative: an upscaler, factor 2/4/8/16, the prompt goes along, its model names the kind", cr.task === "upscale" && eq(vc.factor.steps, [2, 4, 8, 16]) && vc.factor.default === 2 && vc.usesPrompt === true && vc.text === null && vc.model === "images_upscale:creative");
+            check("Precision: an upscaler, factor 2/4/8/16 (the mode refuses more), no prompt", pr.task === "upscale" && eq(vp.factor.steps, [2, 4, 8, 16]) && vp.usesPrompt === false && vp.text === null && vp.model === "images_upscale:precision");
             check("retouch: input fill, no text shape, the crop at most 2048 in steps of 8", vr.input === "fill" && vr.text === null && vr.edit === true && vr.limits.max === 2048 && vr.limits.step === 8);
             check("generate: Generate new only, images_generate with up to 12 references", vg.edit === false && vg.text && vg.text.model === "images_generate" && vg.text.refs && vg.text.refs.max === 12);
             // every row's choices are what the adapter's tables take, and the defaults run
             const rows = (v) => Object.fromEntries(v.settings.map((s) => [s.key, s]));
-            const ru = rows(vu), rr = rows(vr), rg = rows(vg);
+            const rc = rows(vc), rp = rows(vp), rr = rows(vr), rg = rows(vg);
             const T = sub._tables;
-            check("the rows' choices are the adapter's labels",
-                eq(ru.mode.spec[0], Object.keys(T.UPSCALE_MODES)) && eq(ru.preset.spec[0], Object.keys(T.UPSCALE_PRESETS)) && eq(ru.optimised.spec[0], Object.keys(T.UPSCALE_OPTIMISED)) && eq(ru.engine.spec[0], Object.keys(T.UPSCALE_ENGINES))
+            const precisionModes = Object.keys(T.UPSCALE_MODES).filter((k) => T.UPSCALE_MODES[k].kind === "precision");
+            check("the rows: Creative has Preset, Optimized for, Engine and its four sliders; Precision Mode, Precision preset and its three sliders; the choices are the adapter's labels",
+                eq(Object.keys(rc), ["preset", "optimised", "engine", "creativity", "resemblance", "hdr", "fractality"]) && eq(Object.keys(rp), ["mode", "precisionPreset", "sharpness", "grain", "ultraDetail"])
+                && eq(rc.preset.spec[0], Object.keys(T.CREATIVE_PRESETS)) && eq(rc.optimised.spec[0], Object.keys(T.UPSCALE_OPTIMISED)) && eq(rc.engine.spec[0], Object.keys(T.UPSCALE_ENGINES))
+                && eq(rp.mode.spec[0], precisionModes) && eq(rp.precisionPreset.spec[0], Object.keys(T.PRECISION_PRESETS))
                 && eq(rr.mode.spec[0], Object.keys(T.RETOUCH_MODES)) && eq(rr.model.spec[0], Object.keys(T.RETOUCH_MODELS)) && eq(rg.model.spec[0], Object.keys(T.GENERATE_MODELS)));
             const defaults = (v) => Object.fromEntries(v.settings.map((s) => [s.key, s.spec[1].default]));
-            const du = sub._upscaleArgs({ factor: 2, params: defaults(vu) }), dr = sub._retouchArgs({ prompt: "x", params: defaults(vr) });
-            check("the defaults make a valid request (Creative 2x with the subtle sliders; Replace on Auto)", eq(du, { mode: "creative", scale: "2x", creativity: -3, resemblance: 3, optimised: "StandardUltra", engine: "automatic" }) && eq(dr, { mode: "replace", prompt: "x" }), short([du, dr]));
-            check("the INT rows' ranges are the catalog's", ru.creativity.spec[1].min === -10 && ru.creativity.spec[1].max === 10 && ru.sharpness.spec[1].min === 0 && ru.sharpness.spec[1].max === 100 && ru.grain.spec[1].default === 4);
+            const dc = sub._upscaleArgs({ model: vc.model, factor: 2, params: defaults(vc) }), dp = sub._upscaleArgs({ model: vp.model, factor: 2, params: defaults(vp) });
+            const dr = sub._retouchArgs({ prompt: "x", params: defaults(vr) });
+            check("the defaults make a valid request (Creative Subtle 2x; Precision sublime with its sliders; Replace on Auto)",
+                eq(dc, { mode: "creative", scale: "2x", presets: "subtle", optimised: "StandardUltra", engine: "automatic" }) && eq(dp, { mode: "ultra-sublime", scale: "2x", sharpness: 7, grain: 4 }) && eq(dr, { mode: "replace", prompt: "x" }), short([dc, dp, dr]));
+            const S = T.UPSCALE_SLIDERS;
+            check("the INT rows' ranges are the catalog's", ["creativity", "resemblance", "hdr", "fractality"].every((k) => rc[k].spec[1].min === S[k][1] && rc[k].spec[1].max === S[k][2])
+                && ["sharpness", "grain", "ultraDetail"].every((k) => rp[k].spec[1].min === S[k][1] && rp[k].spec[1].max === S[k][2]));
         });
 
         await section("25. the whole run", async () => {
@@ -840,7 +898,7 @@ async function main() {
             check("the mock never saw a non-test Bearer token", mock.oauth.foreignTokens.length === 0);
             const banned = ["X-Pik" + "aso-Client", "magnific-editor" + "-plugins"];
             const files = ["electron/main/providers/magnificsub.js", "electron/main/providers/magnificsub_auth.js", "tools/magnificsub_mock.js", "tools/magnificsub_test.js",
-                "recipes/magnificsub_upscale.json", "recipes/magnificsub_retouch.json", "recipes/magnificsub_generate.json"];
+                "recipes/magnificsub_creative.json", "recipes/magnificsub_precision.json", "recipes/magnificsub_retouch.json", "recipes/magnificsub_generate.json"];
             const hits = files.filter((f) => { const s = fs.readFileSync(path.join(ROOT, f), "utf8").toLowerCase(); return banned.some((b) => s.includes(b.toLowerCase())); });
             check("no plugin client header and no plugin client id in the new files", hits.length === 0, hits.join(", "));
             check("no request of the mock carried a header beyond the usual ones", mock.http.every((h) => h.headers.every((n) => /^(host|connection|content-type|content-length|accept|accept-encoding|accept-language|user-agent|authorization|mcp-protocol-version|mcp-session-id|sec-fetch-mode|transfer-encoding)$/.test(n))),
