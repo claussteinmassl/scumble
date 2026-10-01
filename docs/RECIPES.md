@@ -2074,8 +2074,9 @@ user's web plan (Premium, Premium+, Pro), the same balance as the web app, and s
 instead of an API key. A subscriber can so run Magnific without an API plan. `magnific` above stays as it is; this is
 a provider of its own, `electron/main/providers/magnificsub.js`, with the sign-in in `magnificsub_auth.js`, the
 static tables in `magnificsub_tables.js` and the retouch geometry in `magnificsub_pictures.js`. The plan and the
-reasons are in `docs/PLAN_MAGNIFIC_SUB.md`. **Not run against the live service yet**: everything here is tested
-against a mock.
+reasons are in `docs/PLAN_MAGNIFIC_SUB.md`. **Run live on 2026-10-01** with the subscription (a Premium+ plan): a
+Creative upscale, a Retouch, a Cutout and Generate new on Auto. Edits through the model recipes (the crop through
+`images_generate`) and the newly mapped models have not run live yet; they are tested against a mock.
 
 **The sign-in.** Settings › API providers shows no key field for this provider: the row reads "not signed in" with
 **Sign in**, "waiting for the browser…" with **Cancel**, or "signed in as <email> (plan)" with **Sign out** and "check
@@ -2125,13 +2126,18 @@ account's catalog is not read at run time.
 | `ideogram_4_5`, Ideogram 4.5 (beta); `qwen_image_3_0_pro`, Qwen Image 3.0 Pro (beta) | `ideogram-4-5`, `qwen-image-3-0-pro` | Own recipes, `magnificsub` alone. Edit and Generate new. |
 | `mystic_2_5`, Mystic 2.5; `recraft_v4_1`, Recraft V4.1 | `mystic-2-5`, `recraft-v4-1` | Own recipes, `magnificsub` alone. Generate new only (style references only). |
 | `magnific_creative`, Magnific Creative (upscale) | `creative` | `images_upscale`, factor 2, 4, 8, 16, the prompt goes along. Rows: Preset (Subtle, Vivid, Wild, Custom (sliders)), Optimized for, Engine, Creativity, Resemblance, HDR, Fractality. A named preset goes alone; the four sliders go only with "Custom (sliders)". The REST `magnific` variant stays the default. |
-| `magnific_precision`, Magnific Precision (upscale) | `precision` | `images_upscale`, no prompt, the variant's own factor 2, 4, 8, 16. Rows: Mode (Precision sublime, photo, photo denoiser, v1), Precision preset (None (sliders), Balanced, Portraits, Grainy analog), Sharpness, Grain, Ultra detail. Sublime takes 2, 4, 8, 16 and no Ultra detail; photo, photo denoiser and v1 take 2 only, and another factor is refused before the upload. A preset goes alone, the sliders only with "None (sliders)". The REST `magnific` variant stays the default. |
+| `magnific_precision`, Magnific Precision (upscale) | `precision` | `images_upscale`, no prompt, the variant's own factor 2, 4, 8, 16. Rows: Mode (Precision sublime, photo, photo denoiser: Precision V2's flavours, the same as the REST variant's), Precision preset (None (sliders), Balanced, Portraits, Grainy analog), Sharpness, Grain, Ultra detail. Sublime takes 2, 4, 8, 16 and no Ultra detail; photo and photo denoiser take 2 only, and another factor is refused before the upload. A preset goes alone, the sliders only with "None (sliders)". Precision v1 is refused here (another model). The REST `magnific` variant stays the default. |
+| `magnific_precision_v1`, Magnific Precision v1 (high HDR) | `precision-v1` | Own recipe, `magnificsub` alone, the catalog's name for mode `ultra`: the original Precision, a harder HDR-like look, another model than Precision V2. `images_upscale`, no prompt, 2x only. Rows: Precision preset, Sharpness, Grain, Ultra detail. |
 | `magnificsub_retouch`, Magnific Retouch (subscription) | `images_retouch` | Own recipe (Magnific's retouch tool with its own models). `input: "fill"`, `text: false`: the crop and the selection (white = change) as the mask. Rows: Mode (Replace, Erase), Model (Auto, Classic, Erase, Google Nano Banana Pro, Google Nano Banana 2), Resolution (Default, 1k, 2k, 4k; only the two Nano Banana models have one, a value the model lacks is refused before the upload). Replace needs a prompt, Erase takes none. Reference layers are not sent. |
 
 **A generate variant** (`images_generate`, `count: 1`): `model` and `text.model` are the same catalog slug,
-`settings: []`, `text: { sizes: [1024, 2048], refs: { max: 12 } }`. Generate new sends the prompt and up to 12
-reference layers; the aspect is the model's closest to the asked size, and the model picks the pixel size (the adapter
-sends no resolution). An edit (`input: "edit"`) sends the crop as it is as `references[0]` (type `image`), then the
+`text: { sizes: [1024, 2048], refs: { max: 12 } }`, and one row, **Resolution** (key `resolution`), exactly where the
+catalog lists resolutions for the model: Default (sends nothing, the model's own) and the catalog's values (Flux.2 Pro,
+Max, Flex: 1k, 2k; GPT 2, Nano Banana Pro and 2: 1k, 2k, 4k; Seedream 4.5: 2k, 4k; Seedream 5 Lite: 2k, 3k, 4k;
+Seedream 5 Pro: 1.5k, 2k; Qwen Image 3.0 Pro: 1k, 2k). It goes as `images_generate`'s `resolution` for an edit and a
+new image alike; a value the model does not list is refused before the upload. A model without resolutions has
+`settings: []`. Generate new sends the prompt and up to 12 reference layers; the aspect is the model's closest to the
+asked size. An edit (`input: "edit"`) sends the crop as it is as `references[0]` (type `image`), then the
 Original and the reference layers (12 pictures together), with the prompt as a numbered instruction; no mask, the
 stitch keeps the selection. `limits: { max: 2048, aspects }` holds the model's aspects cut to the `images_generate`
 enum, so the crop's context is widened to the preset the adapter then asks for, and the answer is stretched onto the
@@ -2145,7 +2151,7 @@ where the replacement has no choice of its own. The adapter still runs their sha
 `images_generate` with a Model row, `images_upscale:creative` / `:precision`, a bare `images_upscale`.
 
 An upscale variant's `limits` are 32 to 4096 like the other upscalers (Magnific's real limit on this route is not
-known). A mode of the other kind than the variant's model is refused.
+known). A mode of another kind than the variant's model (`creative`, `precision`, `precision-v1`) is refused.
 
 **Models.** The generate and retouch lists are the models the account's catalog lists (copied to
 `tools/refs/magnificsub/catalog_*.txt` on 2026-10-01), cut to a curated set. The rule: the models the account's catalog

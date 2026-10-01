@@ -225,7 +225,8 @@ mapped.
 - `ideogram_4` -> `ideogram-4` ("Ideogram 4"); `recraft_v4` -> `recraft-v4` ("Recraft V4", not V4 Pro or V4.1). The
   catalog gives both style references only, so the variants are Generate new only (`edit: false`).
 - `magnific_creative` -> `creative`, with the Creative rows; `magnific_precision` -> `precision`, with the Mode row
-  and the Precision rows and its own factor 2 / 4 / 8 / 16. The REST `magnific` variant stays the default.
+  (Precision V2's flavours sublime, photo, photo denoiser, the same as the REST precision-v2 flavours) and the
+  Precision rows and its own factor 2 / 4 / 8 / 16. The REST `magnific` variant stays the default.
 
 **Own recipes** (`magnificsub` alone, family Magnific): `magnific_auto` "Magnific Auto" (`auto`; edits too, the
 user's ruling), `ideogram_4_5` "Ideogram 4.5 (beta)", `qwen_image_3_0_pro` "Qwen Image 3.0 Pro (beta)" (both edit and
@@ -253,5 +254,19 @@ choice of its own (`tools/settings_migration_test.js`). `GENERATE_MODELS` gained
 list (Flux.2 Flex, Google Nano Banana 2 Lite, Seedream 4.5, Seedream 5 Lite, Ideogram 4, Recraft V4, Grok Imagine 2.0
 (beta)), each checked against the catalog by `tools/magnificsub_test.js`.
 
-**Not done:** no resolution row (the catalog lists resolutions for several models, but the adapter sends none and the
-model picks the pixel size); nothing of the restructure ran live.
+**Fix round 1 (the review):**
+- **Precision v1 is another model.** The catalog's `ultra` is "Magnific Precision v1 (high HDR)", not a flavour of
+  Precision V2, so it left the Mode row of `magnific_precision` (the adapter refuses it for `precision`, by label or
+  slug: its kind is `precision-v1`) and became its own recipe `magnific_precision_v1` "Magnific Precision v1 (high
+  HDR)" (`magnificsub` alone, model `precision-v1`, 2x only, rows Precision preset, Sharpness, Grain, Ultra detail).
+- **A Resolution row** (key `resolution`) on every generate variant whose catalog entry lists resolutions: Default
+  (the catalog names no default; nothing is sent and the model takes its own) and exactly the catalog's values. The
+  adapter sends `images_generate`'s `resolution` for an edit and a new image and refuses a value the model does not
+  list, or any on a model without resolutions, before the upload. `GENERATE_MODELS` carries each model's
+  `resolutions`, checked against the catalog.
+- The Grok Imagine 2.0 variant's note says the catalog marks it beta (the shared recipe's name cannot).
+- The Upscale dialog after a migrated profile (`upscaleRecipe` magnific_creative, `recipeProviders.magnific_creative`
+  magnificsub) shows Magnific Creative with "Magnific (subscription)" picked: it worked without a change, checked in
+  a dev instance on a profile with the old ids and in the gate `magnificsub`.
+
+**Not done:** nothing of the restructure ran live.
