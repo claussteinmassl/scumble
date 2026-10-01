@@ -1,0 +1,42 @@
+{
+  "id": "ideogram_4_5",
+  "kind": "provider",
+  "name": "Ideogram 4.5 (beta)",
+  "family": "Magnific",
+  "description": "Ideogram 4.5, which Magnific's catalog marks beta, on your Magnific plan's credits, after signing in under Settings › API providers. Edits the selection with the prompt as an instruction, or makes a new image with up to 12 reference layers. Not run against the live service yet.",
+  "default": "magnificsub",
+  "providers": {
+    "magnificsub": {
+      "model": "ideogram-4-5",
+      "input": "edit",
+      "settings": [],
+      "limits": {
+        "max": 2048,
+        "aspects": [
+          "1:1",
+          "4:5",
+          "5:4",
+          "3:4",
+          "4:3",
+          "2:3",
+          "3:2",
+          "9:16",
+          "16:9",
+          "1:2",
+          "2:1"
+        ]
+      },
+      "text": {
+        "model": "ideogram-4-5",
+        "sizes": [
+          1024,
+          2048
+        ],
+        "refs": {
+          "max": 12
+        }
+      },
+      "note": "Runs on your Magnific plan (Premium, Premium+ or Pro) through Magnific's MCP server (mcp.magnific.com), after signing in under Settings › API providers; each run spends the plan's credits, the same balance as Magnific's web app, and the status line says how many. The pictures are uploaded to Magnific (Freepik Company S.L., Málaga, Spain) as hidden uploads; the results are Magnific creations and show in your Magnific library. Not run against the live service with this model yet. Magnific's Ideogram 4.5 (images_generate). Generate on a selection: the crop goes as the picture to edit, followed by the Original and the reference layers (at most 12 pictures together), with the prompt as an instruction; no mask goes along, the stitch keeps the selection. The crop's context is widened to the model's aspect ratio closest to it, and the answer comes back at the model's own size. Generate new: the prompt and the shown reference layers (at most 12, named in the prompt as image 1, image 2, ...); the aspect ratio is the model's closest to the asked size, the model picks the pixel size."
+    }
+  }
+}

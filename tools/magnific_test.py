@@ -112,7 +112,9 @@ const ups = on.filter((r) => r.task === "upscale").map((r) => r.id).sort();
 if (JSON.stringify(edits) !== JSON.stringify(__EDITS__)) throw new Error("recipes that list magnific: " + edits.join(", "));
 if (JSON.stringify(ups) !== JSON.stringify(__UPSCALERS__)) throw new Error("upscalers that list magnific: " + ups.join(", "));
 for (const r of on.filter((x) => x.task !== "upscale")) {
-    if (r.providers[r.providers.length - 1] !== "magnific") throw new Error(r.id + ": magnific is not last: " + r.providers.join(", "));
+    // the subscription's variant (magnificsub) may follow it, last
+    const rest = r.providers.filter((p) => p !== "magnificsub");
+    if (rest[rest.length - 1] !== "magnific" || (r.providers.includes("magnificsub") && r.providers[r.providers.length - 1] !== "magnificsub")) throw new Error(r.id + ": magnific is not last: " + r.providers.join(", "));
     const raw = host.shell.recipes().find((x) => x.id === r.id);
     if (__NEW__.includes(r.id) ? raw.default !== "magnific" : raw.default === "magnific") throw new Error(r.id + ": the file's default is " + raw.default);
     if (!remembered[r.id] && r.provider !== raw.default) throw new Error(r.id + ": the default moved to " + r.provider);
@@ -131,7 +133,9 @@ try {
     for (const id of ["seedream_5_pro", "gpt_image_2", "mystic"]) {
         const sel = document.querySelector('.shell-recipe[data-id="' + id + '"] select');
         if (!sel) throw new Error("no provider select for " + id);
-        const last = sel.options[sel.options.length - 1];
+        // the last option but the subscription's (magnificsub, which may follow it)
+        const opts = Array.from(sel.options).filter((o) => o.value !== "magnificsub");
+        const last = opts[opts.length - 1];
         options[id] = last.value + " / " + last.textContent;
         if (last.value !== "magnific" || last.textContent !== "Magnific (no key)") throw new Error(id + ": the last option is " + options[id]);
     }
@@ -143,7 +147,7 @@ window.__mg.stored = true;
 await shell.openSettings();
 await wait(300);
 const sel = document.querySelector('.shell-recipe[data-id="seedream_5_pro"] select');
-const after = sel && sel.options[sel.options.length - 1].textContent;
+const after = sel && Array.from(sel.options).filter((o) => o.value !== "magnificsub").pop().textContent;
 const withKey = (rowOf(/^Magnific(?! \\(subscription\\))/) || {}).textContent || "";
 document.getElementById("shell-settings").close();
 if (after !== "Magnific" || !/key set/.test(withKey)) throw new Error("with the key: the option " + after + ", the row " + withKey);

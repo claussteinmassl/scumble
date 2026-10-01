@@ -9,13 +9,15 @@ waits in providers:status, and this script GETs it (the mock's 302 lands on the 
 
 - the rows signed out: every provider of main's providers:list (less those that share a key) has its row; every row but
   Magnific (subscription) has its key input, Save and Clear; that one reads "not signed in" with Sign in and no input,
-  no key hint, no "check balance"; the four recipes' provider options read "(not signed in)";
+  no key hint, no "check balance"; the subscription's option in the recipes' provider dropdowns (Magnific Creative and
+  Precision, Retouch, Magnific Auto) reads "(not signed in)";
 - Sign in from the row: "waiting for the browser…" with Cancel, then "signed in as mock.user@example.com (Mock Plan)"
   with Sign out and "check balance", which answers "1000 credits (Mock Plan)"; the options lose "(not signed in)"; the cutout list offers
   Magnific (subscription), last, and does not select it; the other rows are the same as signed out (and after Sign out);
 - a cutout click with nothing picked (no free backend in a gate profile) sends nothing and says to pick it;
-- one run each through the window: a Creative upscale of a small picture (the document twice as large), a retouch of a
-  selection (a result layer), a cutout of that layer (its mask about half kept), Generate new (a 1024 x 1024 base);
+- one run each through the window: a Creative upscale of a small picture (Magnific Creative on the provider magnificsub;
+  the document twice as large), a retouch of a selection (a result layer), a cutout of that layer (its mask about half
+  kept), Generate new on Magnific Auto (a 1024 x 1024 base);
   each status line names the 90 credits, and the mock saw each tool once with valid arguments;
 - Sign out from the row: "not signed in" again, the hint says the next Sign in asks for Magnific's login, keys no
   longer hold magnificsub, the cutout list drops it.
@@ -42,7 +44,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 NODE_TEST = os.path.join(ROOT, "tools", "magnificsub_test.js")
 MOCK = os.path.join(ROOT, "tools", "magnificsub_mock.js")
 LABEL = "Magnific (subscription)"
-RECIPES = ["magnificsub_creative", "magnificsub_precision", "magnificsub_retouch", "magnificsub_generate"]
+# the recipes that offer the subscription in their provider dropdown and that this test reads or runs (recipe = model,
+# dropdown = provider: docs/PLAN_MAGNIFIC_SUB.md "Restructure")
+RECIPES = ["magnific_creative", "magnific_precision", "magnificsub_retouch", "magnific_auto"]
 CREDITS = "(90 credits)"
 
 
@@ -104,11 +108,11 @@ for (const id of __RECIPES__) {
     options[id] = optionOf(id);
     if (options[id] !== __LABEL__ + " (not signed in)") throw new Error(id + ": the option reads " + options[id]);
 }
-const meta = (document.querySelector('.shell-recipe[data-id="magnificsub_creative"] .shell-recipe-meta') || {}).textContent || "";
+const meta = (document.querySelector('.shell-recipe[data-id="magnific_auto"] .shell-recipe-meta') || {}).textContent || "";
 if (!/not signed in/.test(meta)) throw new Error("the recipe row's meta: " + meta);
 const status = await window.scumble.providers.status("magnificsub");
 if (status.signedIn || status.pending) throw new Error("providers:status " + JSON.stringify(status));
-return { rows: got.length, keyRows: keyRows.length, row: sub, option: options.magnificsub_creative, meta };
+return { rows: got.length, keyRows: keyRows.length, row: sub, option: options.magnific_creative, meta };
 """
 
 SIGN_IN_START = """
@@ -148,14 +152,14 @@ const sel = ed.cutoutSel ? Array.from(ed.cutoutSel.options).map((o) => o.value) 
 if (!backends.includes("magnificsub") || (sel && sel[sel.length - 1] !== "magnificsub")) throw new Error("the cutout backends: " + JSON.stringify({ backends, sel }));
 // never the default: with no free backend in this profile the list shows the "no model" entry until it is picked
 if (ed.cutoutSel && ed.cutoutSel.value !== "") throw new Error("the cutout list defaults to " + ed.cutoutSel.value);
-return { row: row.state, balance, options: options.magnificsub_creative, cutout: sel || backends };
+return { row: row.state, balance, options: options.magnific_creative, cutout: sel || backends };
 """
 
 UPSCALE = """
 const ed = ednow(window.__msDoc);
 host.shell.activate(ed);
 await run("new_canvas", { doc: window.__msDoc, width: 160, height: 120, color: "#708090" });
-await run("select_recipe", { id: "magnificsub_creative", provider: "magnificsub" });
+await run("select_recipe", { id: "magnific_creative", provider: "magnificsub" });
 if (!host.recipe || host.recipe.provider !== "magnificsub") throw new Error("select_recipe gave " + JSON.stringify(host.recipe && [host.recipe.id, host.recipe.provider]));
 await run("set_prompt", { doc: window.__msDoc, text: "crisp detail" });
 const out = await run("upscale", { doc: window.__msDoc, scope: "document", factor: 2, timeout: 120 });
@@ -207,7 +211,8 @@ return { shown, pending: !!ed.cutoutPending, mask: !!layer.maskPx, status: ed.st
 GENERATE_NEW = """
 const ed = ednow(window.__msDoc);
 host.shell.activate(ed);
-await run("select_recipe", { id: "magnificsub_generate", provider: "magnificsub" });
+await run("select_recipe", { id: "magnific_auto", provider: "magnificsub" });
+if (!host.recipe || host.recipe.id !== "magnific_auto" || host.recipe.provider !== "magnificsub" || host.recipe.model !== "auto") throw new Error("select_recipe gave " + JSON.stringify(host.recipe && [host.recipe.id, host.recipe.provider, host.recipe.model]));
 const out = await run("generate_new", { doc: window.__msDoc, prompt: "a lighthouse at dusk", aspect: "1:1", resolution: 1024, timeout: 120 });
 return { size: [ed.width, ed.height], info: out.info, status: ed.status };
 """
@@ -223,7 +228,7 @@ const hint = (subRow().querySelector(".shell-note") || {}).textContent || "";
 if (!/^Signed out\\. The next Sign in asks for Magnific's login/.test(hint)) throw new Error("the hint after Sign out: " + hint);
 const k = await window.scumble.keys.list();
 if ((k.keys || {}).magnificsub && k.keys.magnificsub.set) throw new Error("keys still hold magnificsub");
-const option = optionOf("magnificsub_generate");
+const option = optionOf("magnific_auto");
 if (option !== __LABEL__ + " (not signed in)") throw new Error("the option after Sign out: " + option);
 sameOthers("after the sign-out");
 closeSettings();

@@ -405,6 +405,35 @@
         }
       },
       "note": "Runs on Magnific (Freepik's API, api.magnific.com) with the Magnific key; every API call costs credits, whatever the web plan says; not run against the live API yet. The pictures go inline (base64) to Magnific / Freepik (Freepik Company S.L., Málaga, Spain), which hosts inputs and outputs on its own or its providers' platforms, uses them for security and to improve its products and not to train its own models; the docs do not say where the model runs. Instruction edit of the crop plus the reference layers, no mask input: the stitch keeps the selection. For area-directed edits set Fill to green and Original on, and say \"fill the green area\". Seedream 5.0 Pro on Magnific renders eight preset shapes only: the crop's context is widened to the nearest one the picture can give, so the answer lines up with it (a crop that cannot be widened is centre-cropped). At most ten pictures go in (the crop, Original and the reference layers), each at least 256 × 256 and at most 10 MB (an opaque one goes as JPEG). Resolution 1.5k or 2k. Magnific's price list names no price for 5.0 Pro."
+    },
+    "magnificsub": {
+      "model": "seedream-5-pro",
+      "input": "edit",
+      "settings": [],
+      "limits": {
+        "max": 2048,
+        "aspects": [
+          "1:1",
+          "4:3",
+          "3:4",
+          "16:9",
+          "9:16",
+          "3:2",
+          "2:3",
+          "21:9"
+        ]
+      },
+      "text": {
+        "model": "seedream-5-pro",
+        "sizes": [
+          1024,
+          2048
+        ],
+        "refs": {
+          "max": 12
+        }
+      },
+      "note": "Runs on your Magnific plan (Premium, Premium+ or Pro) through Magnific's MCP server (mcp.magnific.com), after signing in under Settings › API providers; each run spends the plan's credits, the same balance as Magnific's web app, and the status line says how many. The pictures are uploaded to Magnific (Freepik Company S.L., Málaga, Spain) as hidden uploads; the results are Magnific creations and show in your Magnific library. Not run against the live service with this model yet. Magnific's Seedream 5 Pro (images_generate). Generate on a selection: the crop goes as the picture to edit, followed by the Original and the reference layers (at most 12 pictures together), with the prompt as an instruction; no mask goes along, the stitch keeps the selection. The crop's context is widened to the model's aspect ratio closest to it, and the answer comes back at the model's own size. Generate new: the prompt and the shown reference layers (at most 12, named in the prompt as image 1, image 2, ...); the aspect ratio is the model's closest to the asked size, the model picks the pixel size."
     }
   }
 }

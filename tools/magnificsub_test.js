@@ -1013,10 +1013,12 @@ async function main() {
             }
             check("every generate and retouch entry has the catalog's name (\" (beta)\" for a beta or private model), slug, aspects, modes and resolutions", !bad.length, bad.join(" | "));
             // the spec's whole list in its order: GPT 2.5 is beta, Ideogram 4.5 and Qwen Image 3.0 Pro beta and private
-            const spec = ["Auto", "Flux.2 Pro", "Flux.2 Max", "GPT 2", "GPT 2.5 (beta)", "Google Nano Banana Pro", "Google Nano Banana 2", "Seedream 5 Pro", "Ideogram 4.5 (beta)", "Mystic 2.5", "Recraft V4.1", "Qwen Image 3.0 Pro (beta)"];
+            // then the models of the shared recipes the restructure mapped (docs/PLAN_MAGNIFIC_SUB.md "Restructure")
+            const spec = ["Auto", "Flux.2 Pro", "Flux.2 Max", "GPT 2", "GPT 2.5 (beta)", "Google Nano Banana Pro", "Google Nano Banana 2", "Seedream 5 Pro", "Ideogram 4.5 (beta)", "Mystic 2.5", "Recraft V4.1", "Qwen Image 3.0 Pro (beta)",
+                "Flux.2 Flex", "Google Nano Banana 2 Lite", "Seedream 4.5", "Seedream 5 Lite", "Ideogram 4", "Recraft V4", "Grok Imagine 2.0 (beta)"];
             const flags = ["gpt-2-mini", "ideogram-4-5", "qwen-image-3-0-pro"].map((x) => models.get(x));
             check("the catalog's flags: GPT 2.5 beta only, Ideogram 4.5 and Qwen Image 3.0 Pro beta and private (offered, marked (beta))", flags[0].beta && !flags[0].private && flags.slice(1).every((e) => e && e.beta && e.private));
-            check("the generate list is the spec's, in its order", eq(Object.keys(sub._tables.GENERATE_MODELS), spec) && eq(Object.keys(sub._tables.RETOUCH_MODELS), ["Auto", "Classic", "Erase", "Google Nano Banana Pro", "Google Nano Banana 2"]));
+            check("the generate list is the spec's, in its order, then the mapped models", eq(Object.keys(sub._tables.GENERATE_MODELS), spec) && eq(Object.keys(sub._tables.RETOUCH_MODELS), ["Auto", "Classic", "Erase", "Google Nano Banana Pro", "Google Nano Banana 2"]));
             const schemaAspects = mockLib.toolDefs().find((d) => d.name === "images_generate").inputSchema.properties.aspectRatio.enum;
             check("the aspects images_generate takes are its schema's enum", eq([...sub._tables.GENERATE_ASPECTS].sort(), [...schemaAspects].sort()));
         });
@@ -1199,7 +1201,7 @@ async function main() {
             check("signed out: the cutout says to sign in, nothing sent", e4 === "Sign in to Magnific (subscription) first: Settings › API providers.", e4);
         });
 
-        await section("24. the four recipes", async () => {
+        await section("24. the recipes: magnificsub variants of the model recipes, the own ones, the retouch", async () => {
             const origLoad = Module._load;
             Module._load = function (request, ...rest) {
                 if (request === "electron") return { app: { getPath: () => os.tmpdir() } };
@@ -1209,26 +1211,57 @@ async function main() {
             try { recipes = require(path.join(ROOT, "electron", "main", "recipes.js")); } finally { Module._load = origLoad; }
             const raw = (id) => JSON.parse(fs.readFileSync(path.join(ROOT, "recipes", id + ".json"), "utf8"));
             const norm = (id) => recipes._normalize(raw(id));
-            const cr = norm("magnificsub_creative"), pr = norm("magnificsub_precision"), rt = norm("magnificsub_retouch"), gen = norm("magnificsub_generate");
-            const all = [cr, pr, rt, gen];
-            const vc = cr.providers.magnificsub, vp = pr.providers.magnificsub, vr = rt.providers.magnificsub, vg = gen.providers.magnificsub;
-            check("the four recipes (no magnificsub_upscale any more) have magnificsub as their only provider and default", !fs.existsSync(path.join(ROOT, "recipes", "magnificsub_upscale.json"))
-                && all.every((r) => r.default === "magnificsub" && eq(r.providerIds, ["magnificsub"])));
-            check("the descriptions and notes say they run on the plan's credits after signing in", all.every((r) => /Magnific plan's credits, after signing in under Settings › API providers/.test(r.description) && /signing in under Settings › API providers; each run spends the plan's credits/.test(r.providers.magnificsub.note)));
-            check("Creative: an upscaler, factor 2/4/8/16, the prompt goes along, its model names the kind", cr.task === "upscale" && eq(vc.factor.steps, [2, 4, 8, 16]) && vc.factor.default === 2 && vc.usesPrompt === true && vc.text === null && vc.model === "images_upscale:creative");
-            check("Precision: an upscaler, factor 2/4/8/16 (the mode refuses more), no prompt", pr.task === "upscale" && eq(vp.factor.steps, [2, 4, 8, 16]) && vp.usesPrompt === false && vp.text === null && vp.model === "images_upscale:precision");
-            check("retouch: input fill, no text shape, the crop at most 2048 in steps of 8", vr.input === "fill" && vr.text === null && vr.edit === true && vr.limits.max === 2048 && vr.limits.step === 8);
-            check("generate: Generate new only, images_generate with up to 12 references", vg.edit === false && vg.text && vg.text.model === "images_generate" && vg.text.refs && vg.text.refs.max === 12);
+            const T = sub._tables;
+            check("the subscription's copies of the upscalers and its generate recipe are gone (the model recipes took them over)",
+                ["magnificsub_upscale", "magnificsub_creative", "magnificsub_precision", "magnificsub_generate"].every((id) => !fs.existsSync(path.join(ROOT, "recipes", id + ".json"))));
+            // recipe = model, dropdown = provider: the exact model of each shared recipe (docs/PLAN_MAGNIFIC_SUB.md "Restructure")
+            const SHARED = {
+                flux2_pro: "flux-2", flux2_max: "flux-2-max", flux2_flex: "flux-2-flex",
+                nano_banana_pro: "imagen-nano-banana-2", nano_banana_2: "imagen-nano-banana-2-flash", nano_banana_2_lite: "imagen-nano-banana-2-lite",
+                seedream_4_5: "seedream-4-5", seedream_5_lite: "seedream-5-lite", seedream_5_pro: "seedream-5-pro",
+                gpt_image_2: "gpt-2", grok_imagine: "grok-imagine-2", ideogram_4: "ideogram-4", recraft_v4: "recraft-v4",
+            };
+            const OWN = { magnific_auto: ["auto", "Magnific Auto"], ideogram_4_5: ["ideogram-4-5", "Ideogram 4.5 (beta)"], qwen_image_3_0_pro: ["qwen-image-3-0-pro", "Qwen Image 3.0 Pro (beta)"], mystic_2_5: ["mystic-2-5", "Mystic 2.5"], recraft_v4_1: ["recraft-v4-1", "Recraft V4.1"] };
+            const UPSCALERS = ["magnific_creative", "magnific_precision"];
+            const shipped = fs.readdirSync(path.join(ROOT, "recipes")).filter((n) => n.endsWith(".json")).map((n) => n.slice(0, -5)).filter((id) => raw(id).providers && raw(id).providers.magnificsub).sort();
+            check("magnificsub sits in exactly the mapped model recipes, the own ones, the two upscalers and the retouch", eq(shipped, [...Object.keys(SHARED), ...Object.keys(OWN), ...UPSCALERS, "magnificsub_retouch"].sort()), shipped.join(", "));
+            const bad = [];
+            const bySlug = (slug) => Object.values(T.GENERATE_MODELS).find((m) => m.slug === slug);
+            for (const id of [...Object.keys(SHARED), ...Object.keys(OWN)]) {
+                const r = norm(id), v = r.providers.magnificsub, slug = SHARED[id] || OWN[id][0], m = bySlug(slug);
+                if (!m) { bad.push(`${id}: ${slug} is not in the table`); continue; }
+                if (v.model !== slug || !v.text || v.text.model !== slug) bad.push(`${id}: model ${v.model}, text ${v.text && v.text.model}, not ${slug}`);
+                if (!v.text || !v.text.refs || v.text.refs.max !== 12 || v.text.refs.model !== null) bad.push(`${id}: text.refs ${JSON.stringify(v.text && v.text.refs)}`);
+                if (!eq(v.settings, [])) bad.push(`${id}: rows ${JSON.stringify(v.settings)}`);
+                if (!/^Runs on your Magnific plan \(Premium, Premium\+ or Pro\) through Magnific's MCP server \(mcp\.magnific\.com\), after signing in under Settings › API providers; each run spends the plan's credits/.test(v.note)) bad.push(`${id}: the note's opening`);
+                // a style-only model is Generate new only; the others edit the crop in the model's own shapes
+                if (m.ref === "style") { if (v.edit !== false) bad.push(`${id}: a style-only model with an edit`); }
+                else if (v.edit !== true || v.input !== "edit" || v.limits.max !== 2048 || !eq(v.limits.aspects, m.aspects.filter((x) => T.GENERATE_ASPECTS.includes(x)))) bad.push(`${id}: edit ${v.edit}, input ${v.input}, limits ${JSON.stringify(v.limits)}`);
+                const p = raw(id).providers;
+                const order = Object.keys(p), at = order.indexOf("magnificsub");
+                if (SHARED[id]) {
+                    if (r.default === "magnificsub") bad.push(`${id}: the subscription became the default`);
+                    if (p.magnific ? order[at - 1] !== "magnific" : at !== order.length - 1) bad.push(`${id}: magnificsub at ${at} of ${order}`);
+                } else if (r.default !== "magnificsub" || !eq(r.providerIds, ["magnificsub"]) || r.name !== OWN[id][1] || r.family !== "Magnific"
+                    || !/Magnific plan's credits, after signing in under Settings › API providers/.test(r.description)) bad.push(`${id}: ${r.name}, default ${r.default}, providers ${r.providerIds}`);
+            }
+            check("each model recipe's variant names its exact catalog model (edit and text), 12 references, the model's shapes for an edit, none for a style-only one; the default kept; the own recipes named after the catalog, magnificsub alone", !bad.length, bad.join(" | "));
+            // the upscalers: the REST variant stays the default, the subscription's rows moved in as they were
+            const cr = norm("magnific_creative"), pr = norm("magnific_precision"), rt = norm("magnificsub_retouch");
+            const vc = cr.providers.magnificsub, vp = pr.providers.magnificsub, vr = rt.providers.magnificsub;
+            check("the upscalers keep magnific as their default, the subscription's variant right after it", cr.default === "magnific" && pr.default === "magnific" && cr.providerIds[cr.providerIds.indexOf("magnific") + 1] === "magnificsub" && pr.providerIds[pr.providerIds.indexOf("magnific") + 1] === "magnificsub");
+            check("Creative: factor 2/4/8/16, the prompt goes along, the model \"creative\"", cr.task === "upscale" && eq(vc.factor.steps, [2, 4, 8, 16]) && vc.factor.default === 2 && vc.usesPrompt === true && vc.text === null && vc.model === "creative");
+            check("Precision: factor 2/4/8/16 (the mode refuses more), no prompt, the model \"precision\"; the REST variant's factor unchanged", pr.task === "upscale" && eq(vp.factor.steps, [2, 4, 8, 16]) && vp.usesPrompt === false && vp.text === null && vp.model === "precision" && pr.providers.magnific.factor.steps === null);
+            check("retouch: one provider, input fill, no text shape, the crop at most 2048 in steps of 8", rt.default === "magnificsub" && eq(rt.providerIds, ["magnificsub"]) && vr.input === "fill" && vr.text === null && vr.edit === true && vr.limits.max === 2048 && vr.limits.step === 8);
             // every row's choices are what the adapter's tables take, and the defaults run
             const rows = (v) => Object.fromEntries(v.settings.map((s) => [s.key, s]));
-            const rc = rows(vc), rp = rows(vp), rr = rows(vr), rg = rows(vg);
-            const T = sub._tables;
+            const rc = rows(vc), rp = rows(vp), rr = rows(vr);
             const precisionModes = Object.keys(T.UPSCALE_MODES).filter((k) => T.UPSCALE_MODES[k].kind === "precision");
             check("the rows: Creative has Preset, Optimized for, Engine and its four sliders; Precision Mode, Precision preset and its three sliders; the choices are the adapter's labels",
                 eq(Object.keys(rc), ["preset", "optimised", "engine", "creativity", "resemblance", "hdr", "fractality"]) && eq(Object.keys(rp), ["mode", "precisionPreset", "sharpness", "grain", "ultraDetail"])
                 && eq(rc.preset.spec[0], Object.keys(T.CREATIVE_PRESETS)) && eq(rc.optimised.spec[0], Object.keys(T.UPSCALE_OPTIMISED)) && eq(rc.engine.spec[0], Object.keys(T.UPSCALE_ENGINES))
                 && eq(rp.mode.spec[0], precisionModes) && eq(rp.precisionPreset.spec[0], Object.keys(T.PRECISION_PRESETS))
-                && eq(rr.mode.spec[0], Object.keys(T.RETOUCH_MODES)) && eq(rr.model.spec[0], Object.keys(T.RETOUCH_MODELS)) && eq(rg.model.spec[0], Object.keys(T.GENERATE_MODELS)));
+                && eq(rr.mode.spec[0], Object.keys(T.RETOUCH_MODES)) && eq(rr.model.spec[0], Object.keys(T.RETOUCH_MODELS)));
             const defaults = (v) => Object.fromEntries(v.settings.map((s) => [s.key, s.spec[1].default]));
             const dc = sub._upscaleArgs({ model: vc.model, factor: 2, params: defaults(vc) }), dp = sub._upscaleArgs({ model: vp.model, factor: 2, params: defaults(vp) });
             const dr = sub._retouchArgs({ prompt: "x", params: defaults(vr) });
@@ -1283,7 +1316,8 @@ async function main() {
             check("the mock never saw a non-test Bearer token", mock.oauth.foreignTokens.length === 0);
             const banned = ["X-Pik" + "aso-Client", "magnific-editor" + "-plugins"];
             const files = ["electron/main/providers/magnificsub.js", "electron/main/providers/magnificsub_auth.js", "tools/magnificsub_mock.js", "tools/magnificsub_test.js",
-                "recipes/magnificsub_creative.json", "recipes/magnificsub_precision.json", "recipes/magnificsub_retouch.json", "recipes/magnificsub_generate.json"];
+                "recipes/magnificsub_retouch.json", "recipes/magnific_creative.json", "recipes/magnific_precision.json", "recipes/magnific_auto.json", "recipes/ideogram_4_5.json",
+                "recipes/qwen_image_3_0_pro.json", "recipes/mystic_2_5.json", "recipes/recraft_v4_1.json"];
             const hits = files.filter((f) => { const s = fs.readFileSync(path.join(ROOT, f), "utf8").toLowerCase(); return banned.some((b) => s.includes(b.toLowerCase())); });
             check("no plugin client header and no plugin client id in the new files", hits.length === 0, hits.join(", "));
             check("no request of the mock carried a header beyond the usual ones", mock.http.every((h) => h.headers.every((n) => /^(host|connection|content-type|content-length|accept|accept-encoding|accept-language|user-agent|authorization|mcp-protocol-version|mcp-session-id|sec-fetch-mode|transfer-encoding)$/.test(n))),

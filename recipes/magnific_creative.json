@@ -117,6 +117,117 @@
       ],
       "note": "POST /v1/ai/image-upscaler, an asynchronous task polled until it is done; the tab's prompt goes along as guidance, the picture as base64 to Magnific (Freepik, Spain). Upscale (the button next to Generate) runs it on the selection, which comes back sharper at the document's resolution, or on the whole picture, which becomes N times larger with every layer scaled along."
     },
+    "magnificsub": {
+      "model": "creative",
+      "settings": [
+        {
+          "index": 1,
+          "key": "preset",
+          "label": "Preset",
+          "spec": [
+            [
+              "Subtle",
+              "Vivid",
+              "Wild",
+              "Custom (sliders)"
+            ],
+            {
+              "default": "Subtle"
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "key": "optimised",
+          "label": "Optimized for",
+          "spec": [
+            [
+              "Standard",
+              "Soft portraits",
+              "Hard portraits",
+              "Art and illustration",
+              "Video game assets",
+              "Nature and landscapes",
+              "Film and photography",
+              "3D renders",
+              "Science fiction and horror"
+            ],
+            {
+              "default": "Standard"
+            }
+          ]
+        },
+        {
+          "index": 3,
+          "key": "engine",
+          "label": "Engine",
+          "spec": [
+            [
+              "Automatic",
+              "Illusio",
+              "Sharpy",
+              "Sparkle"
+            ],
+            {
+              "default": "Automatic"
+            }
+          ]
+        },
+        {
+          "index": 4,
+          "key": "creativity",
+          "label": "Creativity",
+          "spec": [
+            "INT",
+            {
+              "default": -3,
+              "min": -10,
+              "max": 10
+            }
+          ]
+        },
+        {
+          "index": 5,
+          "key": "resemblance",
+          "label": "Resemblance",
+          "spec": [
+            "INT",
+            {
+              "default": 3,
+              "min": -10,
+              "max": 10
+            }
+          ]
+        },
+        {
+          "index": 6,
+          "key": "hdr",
+          "label": "HDR",
+          "spec": [
+            "INT",
+            {
+              "default": 0,
+              "min": -10,
+              "max": 10
+            }
+          ]
+        },
+        {
+          "index": 7,
+          "key": "fractality",
+          "label": "Fractality",
+          "spec": [
+            "INT",
+            {
+              "default": 0,
+              "min": -10,
+              "max": 10
+            }
+          ]
+        }
+      ],
+      "note": "Runs on your Magnific plan (Premium, Premium+ or Pro) through Magnific's MCP server (mcp.magnific.com), after signing in under Settings › API providers; each run spends the plan's credits, the same balance as Magnific's web app, and the status line says how many. The pictures are uploaded to Magnific (Freepik Company S.L., Málaga, Spain) as hidden uploads; the results are Magnific creations and show in your Magnific library. Creative ran live on 2026-10-01 (2 times, 320 x 240). The tab's prompt goes along as guidance. Subtle, Vivid and Wild set Creativity, Resemblance, HDR and Fractality on Magnific's side; the four sliders go only with \"Custom (sliders)\". Upscale (the button next to Generate) runs it on the selection, which comes back sharper at the document's resolution, or on the whole picture, which becomes N times larger with every layer scaled along."
+    },
     "comfycloud": {
       "model": "MagnificImageUpscalerCreativeNode",
       "options": {

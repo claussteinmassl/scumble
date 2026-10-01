@@ -237,26 +237,29 @@ async function main() {
         // of 26f sub-task 1 (written by its patch script). {} = the text route itself takes pictures; `model` = the edit
         // route a run with references goes to where the text route takes none; `options` merged over the variant's
         const TEXT_REFS = {
-            flux2_pro: { toapis: {}, bfl: {}, fal: { model: "fal-ai/flux-2-pro/edit" }, replicate: {}, wavespeed: { model: "wavespeed-ai/flux-2-pro/edit" }, openrouter: {}, comfyrouter: {}, oxen: {}, magnific: {} },
-            flux2_flex: { toapis: {}, bfl: {}, fal: { model: "fal-ai/flux-2-flex/edit" }, replicate: {}, wavespeed: { model: "wavespeed-ai/flux-2-flex/edit" }, openrouter: {}, oxen: {}, magnific: {} },
-            flux2_max: { bfl: {}, fal: { model: "fal-ai/flux-2-max/edit" }, replicate: {}, wavespeed: { model: "wavespeed-ai/flux-2-max/edit" }, openrouter: {}, comfyrouter: {} },
+            flux2_pro: { toapis: {}, bfl: {}, fal: { model: "fal-ai/flux-2-pro/edit" }, replicate: {}, wavespeed: { model: "wavespeed-ai/flux-2-pro/edit" }, openrouter: {}, comfyrouter: {}, oxen: {}, magnific: {}, magnificsub: { max: 12 } },
+            flux2_flex: { toapis: {}, bfl: {}, fal: { model: "fal-ai/flux-2-flex/edit" }, replicate: {}, wavespeed: { model: "wavespeed-ai/flux-2-flex/edit" }, openrouter: {}, oxen: {}, magnific: {}, magnificsub: { max: 12 } },
+            flux2_max: { bfl: {}, fal: { model: "fal-ai/flux-2-max/edit" }, replicate: {}, wavespeed: { model: "wavespeed-ai/flux-2-max/edit" }, openrouter: {}, comfyrouter: {}, magnificsub: { max: 12 } },
             // Oxen's own cap is 16 for every model; FLUX.2 [klein] takes four pictures (BFL)
             flux2_klein: { bfl: {}, fal: { model: "fal-ai/flux-2/klein/9b/edit" }, wavespeed: { model: "wavespeed-ai/flux-2-klein-9b/edit" }, oxen: { max: 4 } },
-            gpt_image_2: { toapis: {}, openai: {}, fal: { model: "openai/gpt-image-2/edit" }, replicate: {}, wavespeed: { model: "openai/gpt-image-2/edit" }, openrouter: {}, comfyrouter: {}, oxen: {}, magnific: { model: "text-to-image/gpt-image-2-edit" } },
+            gpt_image_2: { toapis: {}, openai: {}, fal: { model: "openai/gpt-image-2/edit" }, replicate: {}, wavespeed: { model: "openai/gpt-image-2/edit" }, openrouter: {}, comfyrouter: {}, oxen: {}, magnific: { model: "text-to-image/gpt-image-2-edit" }, magnificsub: { max: 12 } },
             gpt_image_2_5_flare: { toapis: {}, openai: {}, wavespeed: { model: "openai/gpt-image-2.5-flare/edit" }, openrouter: {}, comfyrouter: {}, oxen: {}, magnific: { model: "text-to-image/gpt-image-2-5-edit" } },
             gpt_image_2_5_sunburst: { toapis: {}, openai: {}, wavespeed: { model: "openai/gpt-image-2.5-sunburst/edit" }, openrouter: {}, comfyrouter: {}, oxen: {}, magnific: { model: "text-to-image/gpt-image-2-5-edit" } },
-            nano_banana_2: { toapis: {}, gemini: {}, fal: { model: "fal-ai/nano-banana-2/edit", options: { aspect_ratios: ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"] } }, replicate: {}, wavespeed: { model: "google/nano-banana-2/edit" }, openrouter: {}, comfyrouter: {}, oxen: {} },
-            nano_banana_2_lite: { toapis: {}, gemini: {}, wavespeed: { model: "google/nano-banana-2-lite/edit" }, openrouter: {}, comfyrouter: {}, oxen: {} },
-            nano_banana_pro: { toapis: {}, gemini: {}, fal: { model: "fal-ai/nano-banana-pro/edit", options: { aspect_ratios: ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"] } }, replicate: {}, wavespeed: { model: "google/nano-banana-pro/edit" }, openrouter: {}, comfyrouter: {}, oxen: {} },
-            seedream_4_5: { magnific: { model: "text-to-image/seedream-v4-5-edit" } },
-            seedream_5_lite: { toapis: {}, ark: {}, fal: { model: "fal-ai/bytedance/seedream/v5/lite/edit", options: { sizing: "image_size", pixels: [3686400, 16777216] } }, replicate: {}, wavespeed: { model: "bytedance/seedream-v5.0-lite/edit" }, openrouter: {}, comfyrouter: {}, magnific: { model: "text-to-image/seedream-v5-lite-edit" } },
-            seedream_5_pro: { toapis: {}, ark: {}, fal: { model: "bytedance/seedream/v5/pro/edit", options: { sizing: "image_size", pixels: [1048576, 4194304] } }, wavespeed: { model: "bytedance/seedream-v5.0-pro/edit" }, openrouter: {}, comfyrouter: {}, oxen: {}, magnific: { model: "text-to-image/seedream-v5-pro-edit" } },
+            nano_banana_2: { toapis: {}, gemini: {}, fal: { model: "fal-ai/nano-banana-2/edit", options: { aspect_ratios: ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"] } }, replicate: {}, wavespeed: { model: "google/nano-banana-2/edit" }, openrouter: {}, comfyrouter: {}, oxen: {}, magnificsub: { max: 12 } },
+            nano_banana_2_lite: { toapis: {}, gemini: {}, wavespeed: { model: "google/nano-banana-2-lite/edit" }, openrouter: {}, comfyrouter: {}, oxen: {}, magnificsub: { max: 12 } },
+            nano_banana_pro: { toapis: {}, gemini: {}, fal: { model: "fal-ai/nano-banana-pro/edit", options: { aspect_ratios: ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"] } }, replicate: {}, wavespeed: { model: "google/nano-banana-pro/edit" }, openrouter: {}, comfyrouter: {}, oxen: {}, magnificsub: { max: 12 } },
+            seedream_4_5: { magnific: { model: "text-to-image/seedream-v4-5-edit" }, magnificsub: { max: 12 } },
+            seedream_5_lite: { toapis: {}, ark: {}, fal: { model: "fal-ai/bytedance/seedream/v5/lite/edit", options: { sizing: "image_size", pixels: [3686400, 16777216] } }, replicate: {}, wavespeed: { model: "bytedance/seedream-v5.0-lite/edit" }, openrouter: {}, comfyrouter: {}, magnific: { model: "text-to-image/seedream-v5-lite-edit" }, magnificsub: { max: 12 } },
+            seedream_5_pro: { toapis: {}, ark: {}, fal: { model: "bytedance/seedream/v5/pro/edit", options: { sizing: "image_size", pixels: [1048576, 4194304] } }, wavespeed: { model: "bytedance/seedream-v5.0-pro/edit" }, openrouter: {}, comfyrouter: {}, oxen: {}, magnific: { model: "text-to-image/seedream-v5-pro-edit" }, magnificsub: { max: 12 } },
             qwen_image_edit: { toapis: {}, comfyrouter: {}, oxen: {}, wavespeed: {} },
             qwen_image_2_1: { oxen: {} },
             hy_image_3_5: { comfypartner: {} },
-            grok_imagine: { fal: { model: "xai/grok-imagine-image/v2.0/edit" }, openrouter: {}, oxen: { model: "xai-grok-imagine-image-edit" } },
-            // Magnific (subscription): images_generate takes up to 12 references itself (tools/refs/magnificsub/images_generate.json)
-            magnificsub_generate: { magnificsub: { max: 12 } },
+            grok_imagine: { fal: { model: "xai/grok-imagine-image/v2.0/edit" }, openrouter: {}, oxen: { model: "xai-grok-imagine-image-edit" }, magnificsub: { max: 12 } },
+            // Magnific (subscription): images_generate takes up to 12 references itself (tools/refs/magnificsub/images_generate.json),
+            // in the model recipes above and in the subscription's own ones (the style-only models take them as style pictures)
+            ideogram_4: { magnificsub: { max: 12 } }, recraft_v4: { magnificsub: { max: 12 } },
+            magnific_auto: { magnificsub: { max: 12 } }, ideogram_4_5: { magnificsub: { max: 12 } }, qwen_image_3_0_pro: { magnificsub: { max: 12 } },
+            mystic_2_5: { magnificsub: { max: 12 } }, recraft_v4_1: { magnificsub: { max: 12 } },
         };
         // the text shapes that make a new image from the prompt alone (26f's "None" row): text-only or inpaint-only
         // models, a single-picture edit field, a Comfy Router dialect with no input picture, Reve (its edit cap unread)
@@ -286,7 +289,7 @@ async function main() {
             }
         }
         const stale = Object.entries(TEXT_REFS).flatMap(([id, rows]) => Object.keys(rows).map((pid) => `${id}/${pid}`)).filter((n) => !seen.has(n));
-        check(`every shipped variant with a text shape carries the table's text.refs, normalised (${withRefs} take references of ${withText})`, !wrong.length && withRefs === 99, wrong.slice(0, 5).join(" | ") || `${withRefs} with text.refs`);
+        check(`every shipped variant with a text shape carries the table's text.refs, normalised (${withRefs} take references of ${withText})`, !wrong.length && withRefs === 116, wrong.slice(0, 5).join(" | ") || `${withRefs} with text.refs`);
         check("every row of the table names a shipped provider variant", !stale.length, stale.join(", "));
         check("every text shape without text.refs is on the takes-none list", !none.length, none.join(", "));
         const noneStale = Object.entries(TAKES_NONE).flatMap(([id, pids]) => pids.map((pid) => `${id}/${pid}`)).filter((n) => { const [id, pid] = n.split("/"); const r = list.find((x) => x.id === id); return !r || !r.providers[pid] || !r.providers[pid].text || r.providers[pid].text.refs !== null; });

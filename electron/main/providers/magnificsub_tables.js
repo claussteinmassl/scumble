@@ -18,7 +18,8 @@ const PRECISION_KEYS = ["sharpness", "grain", "ultraDetail", "precisionPreset"];
 const ALL_SCALES = ["2x", "4x", "8x", "16x"];
 
 // catalog_images_upscale_modes_list.txt: each mode's scales and the keys it takes ("supply only that mode's optional
-// params"); `kind` is the recipe it belongs to (recipes/magnificsub_creative.json, recipes/magnificsub_precision.json)
+// params"); `kind` is the variant it belongs to (the magnificsub variants of recipes/magnific_creative.json and
+// recipes/magnific_precision.json)
 const UPSCALE_MODES = Object.freeze({
     "Creative": { slug: "creative", scales: ALL_SCALES, keys: CREATIVE_KEYS, kind: "creative" },
     "Precision sublime": { slug: "ultra-sublime", scales: ALL_SCALES, keys: PRECISION_KEYS.filter((k) => k !== "ultraDetail"), kind: "precision" },
@@ -78,7 +79,9 @@ const RETOUCH_MODELS = Object.freeze({
 
 // catalog_images_models_list.txt: each model's aspect ratios as listed, and how a reference layer goes: as "image"
 // where the model takes one, as "style" (a creation as a style picture) where it takes only that. The spec's list, in
-// its order; GPT 2.5 is beta, Ideogram 4.5 and Qwen Image 3.0 Pro are beta and private.
+// its order; GPT 2.5 is beta, Ideogram 4.5 and Qwen Image 3.0 Pro are beta and private. Then the models of the shared
+// model recipes the restructure mapped (docs/PLAN_MAGNIFIC_SUB.md "Restructure": exactly the recipe's model and
+// version); Grok Imagine 2.0 is beta and private.
 const GENERATE_MODELS = Object.freeze({
     "Auto": { slug: "auto", ref: "image", aspects: ["1:1", "16:9", "9:16", "2:3", "3:4", "1:2", "2:1", "4:5", "3:2", "4:3"] },
     "Flux.2 Pro": { slug: "flux-2", ref: "image", aspects: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "1:2", "2:1", "4:5"] },
@@ -92,6 +95,13 @@ const GENERATE_MODELS = Object.freeze({
     "Mystic 2.5": { slug: "mystic-2-5", ref: "style", aspects: ["1:1", "16:9", "9:16", "2:3", "3:4", "1:2", "2:1", "4:5", "3:2", "4:3"] },
     "Recraft V4.1": { slug: "recraft-v4-1", ref: "style", aspects: ["1:1", "2:1", "1:2", "3:2", "2:3", "4:3", "3:4", "5:4", "4:5", "16:9", "9:16"] },
     "Qwen Image 3.0 Pro (beta)": { slug: "qwen-image-3-0-pro", ref: "image", aspects: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "1:2", "2:1", "4:5"] },
+    "Flux.2 Flex": { slug: "flux-2-flex", ref: "image", aspects: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "1:2", "2:1", "4:5"] },
+    "Google Nano Banana 2 Lite": { slug: "imagen-nano-banana-2-lite", ref: "image", aspects: ["1:1", "2:3", "3:2", "4:3", "3:4", "5:4", "4:5", "16:9", "9:16", "21:9"] },
+    "Seedream 4.5": { slug: "seedream-4-5", ref: "image", aspects: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "1:2", "2:1", "4:5", "21:9"] },
+    "Seedream 5 Lite": { slug: "seedream-5-lite", ref: "image", aspects: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "1:2", "2:1", "4:5", "21:9"] },
+    "Ideogram 4": { slug: "ideogram-4", ref: "style", aspects: ["1:1", "16:9", "9:16", "10:16", "16:10", "4:3", "3:4", "3:2", "2:3", "4:5", "5:4", "2:1", "1:2", "3:1", "1:3"] },
+    "Recraft V4": { slug: "recraft-v4", ref: "style", aspects: ["1:1", "2:1", "1:2", "3:2", "2:3", "4:3", "3:4", "5:4", "4:5", "16:9", "9:16"] },
+    "Grok Imagine 2.0 (beta)": { slug: "grok-imagine-2", ref: "image", aspects: ["1:1", "16:9", "9:16", "2:3", "3:4", "1:2", "2:1", "3:2", "4:3"] },
 });
 
 const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);

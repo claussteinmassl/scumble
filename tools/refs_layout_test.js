@@ -1456,8 +1456,9 @@ async function main() {
             let lay = null;
             try { lay = refs.checkLayout(p.textLayout({ ...req }), req); } catch (err) { bad.push(`textLayout: ${err.message}`); }
             if (lay) {
-                const want = Array.from({ length: n }, (_, i) => ({ role: "reference", ref: i, n: i + 1 }));
-                if (!eq(lay.pictures.map((x) => ({ role: x.role, ref: x.ref, n: x.n })), want) || lay.drops) bad.push(`textLayout: ${short(lay)}, not ${n} references numbered from 1 without a drop`);
+                // a style layout (Magnific (subscription)'s style-only models) sends them in order, unnumbered
+                const want = Array.from({ length: n }, (_, i) => ({ role: "reference", ref: i, n: lay.style ? null : i + 1 }));
+                if (!eq(lay.pictures.map((x) => ({ role: x.role, ref: x.ref, n: x.n })), want) || lay.drops) bad.push(`textLayout: ${short(lay)}, not ${n} references ${lay.style ? "in order (style)" : "numbered from 1"} without a drop`);
             }
             const shot = await capture(p, req, "generate");
             if (!shot.request) { bad.push(`no request: ${shot.error} (${shot.calls.join(", ")})`); check(`${name}: ${n} references`, false, bad.join(" | ")); continue; }
@@ -1490,7 +1491,7 @@ async function main() {
             const uploaded = [...shot.uploads.values()].map((b) => fixtureOf(b, fx, shot));
             if (uploaded.some((u) => !refIds.includes(u))) bad.push(`uploads [${uploaded.join(", ")}]`);
             if (lay) {
-                const inOrder = numberedOf(lay).map((x) => { const at = picturesAt(shot, x.field, fx); return at && at.length === 1 ? at[0].id : `?${x.field}`; });
+                const inOrder = (lay.style ? lay.pictures : numberedOf(lay)).map((x) => { const at = picturesAt(shot, x.field, fx); return at && at.length === 1 ? at[0].id : `?${x.field}`; });
                 if (!eq(inOrder, refIds)) bad.push(`by the layout's fields the request holds [${inOrder.join(", ")}]`);
             }
             const keys = new Set();

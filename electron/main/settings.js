@@ -67,12 +67,51 @@ function writeJson(name, value) {
 
 let cache = null;
 
+// Recipe ids that went, and the recipe that took each over with the provider to run it on: the subscription's own
+// copies of Magnific's upscalers and its generate recipe became `magnificsub` variants of the model recipes
+// (docs/PLAN_MAGNIFIC_SUB.md "Restructure", 2026-10-01)
+const MOVED_RECIPES = Object.freeze({
+    magnificsub_creative: { id: "magnific_creative", provider: "magnificsub" },
+    magnificsub_precision: { id: "magnific_precision", provider: "magnificsub" },
+    magnificsub_generate: { id: "magnific_auto", provider: "magnificsub" },
+});
+
+/**
+ * Move a stored selection of a removed recipe id (`recipe`, `recipeByMode`, `upscaleRecipe`) to the recipe that replaced
+ * it, with the provider the old recipe ran on as that recipe's provider. A `recipeProviders` entry of a removed id goes
+ * to the new id only where that has none of its own (a selection still moves it). Changes `stored` in place.
+ * @param {Record<string, any>} stored the settings as read from the file
+ * @returns {Record<string, any>} the same object
+ */
+function migrateRecipes(stored) {
+    if (!stored || typeof stored !== "object") return stored;
+    const moved = (id) => (typeof id === "string" && Object.prototype.hasOwnProperty.call(MOVED_RECIPES, id) ? MOVED_RECIPES[id] : null);
+    const providers = stored.recipeProviders && typeof stored.recipeProviders === "object" ? { ...stored.recipeProviders } : {};
+    let changed = false;
+    const take = (id, keep = false) => {
+        const m = moved(id);
+        if (!m) return id;
+        if (!keep || !providers[m.id]) providers[m.id] = m.provider;
+        changed = true;
+        return m.id;
+    };
+    for (const old of Object.keys(providers)) if (moved(old)) { delete providers[old]; take(old, true); }
+    if (moved(stored.recipe)) stored.recipe = take(stored.recipe);
+    if (moved(stored.upscaleRecipe)) stored.upscaleRecipe = take(stored.upscaleRecipe);
+    if (stored.recipeByMode && typeof stored.recipeByMode === "object" && Object.values(stored.recipeByMode).some(moved)) {
+        stored.recipeByMode = Object.fromEntries(Object.entries(stored.recipeByMode).map(([mode, id]) => [mode, take(id)]));
+    }
+    if (changed) stored.recipeProviders = providers;
+    return stored;
+}
+
 function get() {
     if (!cache) {
         const stored = readJson("settings.json", {});
         // 0.1.30 and 0.1.31 stored their default `embedRecipe: false` with every write (set() writes the whole object); it
         // counts as the user's only when the switch itself wrote it, which marks it (host.setEmbedRecipe, since 0.1.32)
         if (stored && stored.embedRecipe === false && !stored.embedRecipeChosen) delete stored.embedRecipe;
+        migrateRecipes(stored);
         cache = { ...DEFAULTS, ...stored };
     }
     return cache;
@@ -93,4 +132,4 @@ function saveState(state) {
     autosave.save(app.getPath("userData"), state);
 }
 
-module.exports = { get, set, loadState, saveState, DEFAULTS };
+module.exports = { get, set, loadState, saveState, DEFAULTS, MOVED_RECIPES, _migrateRecipes: migrateRecipes };

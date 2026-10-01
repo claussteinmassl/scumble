@@ -1,0 +1,41 @@
+{
+  "id": "magnific_auto",
+  "kind": "provider",
+  "name": "Magnific Auto",
+  "family": "Magnific",
+  "description": "Magnific picks the model for each run (Auto) on your Magnific plan's credits, after signing in under Settings › API providers. Edits the selection with the prompt as an instruction, or makes a new image with up to 12 reference layers. Generate new ran live on 2026-10-01; the edit has not run against the live service yet.",
+  "default": "magnificsub",
+  "providers": {
+    "magnificsub": {
+      "model": "auto",
+      "input": "edit",
+      "settings": [],
+      "limits": {
+        "max": 2048,
+        "aspects": [
+          "1:1",
+          "16:9",
+          "9:16",
+          "2:3",
+          "3:4",
+          "1:2",
+          "2:1",
+          "4:5",
+          "3:2",
+          "4:3"
+        ]
+      },
+      "text": {
+        "model": "auto",
+        "sizes": [
+          1024,
+          2048
+        ],
+        "refs": {
+          "max": 12
+        }
+      },
+      "note": "Runs on your Magnific plan (Premium, Premium+ or Pro) through Magnific's MCP server (mcp.magnific.com), after signing in under Settings › API providers; each run spends the plan's credits, the same balance as Magnific's web app, and the status line says how many. The pictures are uploaded to Magnific (Freepik Company S.L., Málaga, Spain) as hidden uploads; the results are Magnific creations and show in your Magnific library. Generate new ran live on 2026-10-01 (1:1); the edit has not run against the live service yet. Magnific's Auto (images_generate). Generate on a selection: the crop goes as the picture to edit, followed by the Original and the reference layers (at most 12 pictures together), with the prompt as an instruction; no mask goes along, the stitch keeps the selection. The crop's context is widened to the model's aspect ratio closest to it, and the answer comes back at the model's own size. Generate new: the prompt and the shown reference layers (at most 12, named in the prompt as image 1, image 2, ...); the aspect ratio is the model's closest to the asked size, the model picks the pixel size."
+    }
+  }
+}

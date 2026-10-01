@@ -33,8 +33,9 @@
 //                      Precision sublime when empty); a mode's slug ("ultra-photo") also names that mode as the default
 //   the retouch        "images_retouch" with input "fill" (recipes/magnificsub_retouch.json)
 //
-// The recipes before the model recipes took them over still run: "images_generate" with the model in a Model row
-// (key "model"), "images_upscale:creative" and "images_upscale:precision".
+// The shapes of the recipes the model recipes replaced (magnificsub_generate, _creative, _precision; removed) still
+// run, for an agent or an imported copy: "images_generate" with the model in a Model row (key "model"),
+// "images_upscale:creative" and "images_upscale:precision".
 //   cutout(png)     images_remove_background -> the result's alpha as a grey mask (white = keep)
 //   balance()       account_balance -> "N credits (plan)"
 //   ready()         { ok } or { ok: false, reason }: signed in or not; index.js asks it instead of the key check
@@ -567,8 +568,8 @@ function layout(req) {
 
 /**
  * The generate model of a request: the variant's `model`, a slug of the catalog table (or its label, for an agent);
- * anything else is refused before a picture is uploaded. The tool's name or none (the recipe magnificsub_generate, an
- * agent) reads the Model row instead (Auto when empty).
+ * anything else is refused before a picture is uploaded. The tool's name or none (the removed recipe
+ * magnificsub_generate, an agent) reads the Model row instead (Auto when empty).
  */
 function generateModel(req) {
     const m = String(req.model || "").trim();

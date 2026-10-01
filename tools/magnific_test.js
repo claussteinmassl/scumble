@@ -666,9 +666,11 @@ async function main() {
             const r = recipes.find((x) => x.id === id), raw = rawRecipe(id), v = r.providers.magnific;
             const route = v.model, R = mag._routes[route];
             if (!R) { bad.push(`${id}: no route ${route}`); continue; }
-            if (r.providerIds[r.providerIds.length - 1] !== "magnific") bad.push(`${id}: magnific is not last (${r.providerIds})`);
+            // the subscription's variant (magnificsub) may follow it: the same vendor's other dropdown entry
+            const ids = r.providerIds.filter((p) => p !== "magnificsub");
+            if (ids[ids.length - 1] !== "magnific" || (r.providerIds.includes("magnificsub") && r.providerIds[r.providerIds.length - 1] !== "magnificsub")) bad.push(`${id}: magnific is not last (${r.providerIds})`);
             if (r.default !== raw.default) bad.push(`${id}: the default moved`);
-            if (NEW.includes(id) ? r.default !== "magnific" || !eq(r.providerIds, ["magnific"]) : r.default === "magnific") bad.push(`${id}: default ${r.default}`);
+            if (NEW.includes(id) ? r.default !== "magnific" || !eq(ids, ["magnific"]) : r.default === "magnific") bad.push(`${id}: default ${r.default}`);
             if (!NEW.includes(id) && !/Also on Magnific\./.test(r.description || "")) bad.push(`${id}: the description does not say Also on Magnific`);
             if (!/^Runs on Magnific \(Freepik's API, api\.magnific\.com\) with the Magnific key; every API call costs credits, whatever the web plan says; not run against the live API yet\. /.test(v.note || "")) bad.push(`${id}: the note's opening`);
             if (!/Freepik Company S\.L\., Málaga, Spain/.test(v.note || "")) bad.push(`${id}: the note does not say where the pictures go`);

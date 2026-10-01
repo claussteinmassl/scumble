@@ -1,0 +1,27 @@
+{
+  "id": "recraft_v4_1",
+  "kind": "provider",
+  "name": "Recraft V4.1",
+  "family": "Magnific",
+  "description": "Recraft V4.1 on your Magnific plan's credits, after signing in under Settings › API providers. Generate new only, with up to 12 reference layers as style pictures. Not run against the live service yet.",
+  "default": "magnificsub",
+  "providers": {
+    "magnificsub": {
+      "model": "recraft-v4-1",
+      "input": "edit",
+      "edit": false,
+      "settings": [],
+      "text": {
+        "model": "recraft-v4-1",
+        "sizes": [
+          1024,
+          2048
+        ],
+        "refs": {
+          "max": 12
+        }
+      },
+      "note": "Runs on your Magnific plan (Premium, Premium+ or Pro) through Magnific's MCP server (mcp.magnific.com), after signing in under Settings › API providers; each run spends the plan's credits, the same balance as Magnific's web app, and the status line says how many. The pictures are uploaded to Magnific (Freepik Company S.L., Málaga, Spain) as hidden uploads; the results are Magnific creations and show in your Magnific library. Not run against the live service with this model yet. Magnific's Recraft V4.1 (images_generate), Generate new only: it takes pictures as style references only, so it cannot edit a crop. The shown reference layers (at most 12) go as style pictures, which the prompt cannot name. The aspect ratio is the model's closest to the asked size; the model picks the pixel size."
+    }
+  }
+}
