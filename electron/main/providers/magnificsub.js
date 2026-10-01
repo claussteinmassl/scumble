@@ -524,6 +524,20 @@ function textLayout(req) {
     return layoutOf({ seq: refs, max: REFS_MAX });
 }
 
+// The largest seed sent. images_generate's schema allows 0..4294967295, but models behind it refuse more than a signed
+// 32-bit integer: Auto picked Seedream 5 Pro live (2026-10-01), which failed with "`seed` ... must be between -1 and
+// 2147483647". The schema does not say so, so every seed is held to the smaller range.
+const SEED_MAX = 2147483647;
+
+/**
+ * The seed Magnific gets for a run's seed: as it is within 0..2147483647, a larger one mapped into that range by its
+ * remainder (the same seed always gives the same Magnific seed); undefined for none or a negative one.
+ */
+function seedFor(seed) {
+    if (!Number.isInteger(seed) || seed < 0) return undefined;
+    return seed <= SEED_MAX ? seed : seed % (SEED_MAX + 1);
+}
+
 /** The model's aspect ratio closest to the asked width and height, from those images_generate takes. */
 function aspectFor(model, w, h) {
     const list = model.aspects.filter((a) => T.GENERATE_ASPECTS.includes(a));
@@ -538,7 +552,8 @@ async function generate(req, ctx = {}) {
     if (refs.length > REFS_MAX) throw new Error(`${LABEL}: at most ${REFS_MAX} reference images go with a new image; this run has ${refs.length}.`);
     const lay = textLayout({ ...req, references: refs, original: 0 });
     const args = { prompt: instruction({ ...req, kind: "text" }, lay, text), mode: model.slug, aspectRatio: aspectFor(model, req.width, req.height), count: 1 };
-    if (Number.isInteger(req.seed) && req.seed >= 0 && req.seed <= 4294967295) args.seed = req.seed;
+    const seed = seedFor(req.seed);
+    if (seed !== undefined) args.seed = seed;
     const S = sessionOf(ctx);
     if (refs.length) {
         const ids = [];
@@ -547,7 +562,8 @@ async function generate(req, ctx = {}) {
     }
     const file = await create(S, "images_generate", args, DEFAULT_WAIT_MS);
     const out = answer(file, { model: model.slug, aspect: args.aspectRatio }, ctx);
-    if (args.seed !== undefined) out.seed = args.seed;
+    // the run's own seed (the same one gives the same Magnific seed again); the one sent is in info
+    if (seed !== undefined) { out.seed = req.seed; out.info.seed = seed; }
     return out;
 }
 
@@ -649,6 +665,7 @@ module.exports = {
     _upscaleArgs: upscaleArgs,
     _retouchArgs: retouchArgs,
     _aspectFor: aspectFor,
+    _seedFor: seedFor,
     _tables: T,
     _pictures: P,
 };

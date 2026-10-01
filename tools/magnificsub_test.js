@@ -803,7 +803,20 @@ async function main() {
             const g = toolCalls(c0).find((x) => x.tool === "images_generate");
             check("without references: no upload, images_generate {prompt, mode, aspectRatio, count: 1, seed}, valid",
                 eq(toolsOf(c0), ["images_generate", "creations_wait", "creations_register_download"]) && !invalid(c0).length && eq(g.args, { prompt: "a lighthouse at dusk", mode: "seedream-5-pro", aspectRatio: "16:9", count: 1, seed: 7 }), short(g && g.args));
-            check("the answer: the first result, its size, the credits, the model and the aspect", out.width === 64 && out.height === 48 && eq(out.info, { credits: 90, model: "seedream-5-pro", aspect: "16:9" }) && out.seed === 7, short(out.info));
+            check("the answer: the first result, its size, the credits, the model, the aspect and the seed sent", out.width === 64 && out.height === 48 && eq(out.info, { credits: 90, model: "seedream-5-pro", aspect: "16:9", seed: 7 }) && out.seed === 7, short(out.info));
+
+            // a seed above 2147483647 (Seedream behind Auto refused one live): mapped by its remainder, the same each time
+            const big = 2 ** 40;
+            const sent = [];
+            for (let i = 0; i < 2; i++) {
+                c0 = mock.calls.length;
+                const o = await sub.generate({ kind: "text", prompt: "a lighthouse", width: 1024, height: 1024, references: [], params: {}, seed: big }, vctx);
+                sent.push([toolCalls(c0).find((x) => x.tool === "images_generate").args.seed, o.seed, o.info.seed]);
+            }
+            check("a seed of 2^40 goes as 2^40 % 2^31 (0 here), twice the same; the answer keeps the run's seed, info the one sent", eq(sent, [[0, big, 0], [0, big, 0]]) && !invalid(c0).length, short(sent));
+            const m = sub._seedFor;
+            check("the seed map: within 0..2147483647 as it is, larger by remainder, negative or none left out",
+                m(0) === 0 && m(2147483647) === 2147483647 && m(2147483648) === 0 && m(2147483649) === 1 && m(2 ** 40 + 5) === 5 && m(4294967295) === 2147483647 && m(-1) === undefined && m(undefined) === undefined && m(1.5) === undefined);
 
             c0 = mock.calls.length;
             const refs = [pngBytes(200, "REF-A"), pngBytes(200, "REF-B"), pngBytes(200, "REF-C")];
